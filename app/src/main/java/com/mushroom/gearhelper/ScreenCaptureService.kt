@@ -351,21 +351,16 @@ class ScreenCaptureService : Service() {
                                                 smokeStreak = 0
                                                 smokeSince = 0L
 
-                                                // Robust gear clicking:
-                                                // 1. Compute dynamic centroid of cloud/gear if available
-                                                val centroid = DecisionLogic.getCloudCentroid(bitmap)
-                                                val primaryX = centroid?.x ?: (config.points["gear"]?.x ?: 0.505f)
-                                                val tapY = config.points["gear"]?.y ?: 0.580f
+                                                // Robust gear clicking (from original Chrome extension defaults.js):
+                                                // 1. Primary tap at the exact proven coordinate (0.514f, 0.609f).
+                                                // This targets the exact center of all floating gears, especially little gears!
+                                                val gearPt = config.points["gear"] ?: PointF(0.514f, 0.609f)
+                                                safeTap(gearPt, "Lamp Gear (Primary: ${gearPt.x}, ${gearPt.y})")
 
-                                                // Primary tap on object center
-                                                safeTap(PointF(primaryX, tapY), "Lamp Gear (Centroid X=${"%.3f".format(primaryX)})")
-
-                                                // 2. Dual-tap protection: different objects have different centers
-                                                // (e.g. glasses at X=0.540 vs belt at X=0.466).
-                                                // Send a second tap 120ms later at complementary offset so neither side is missed!
-                                                val secondX = if (primaryX < 0.510f) 0.538f else 0.472f
-                                                delay(120)
-                                                safeTap(PointF(secondX, tapY), "Lamp Gear (Offset X=${"%.3f".format(secondX)})")
+                                                // 2. Dual-tap along the exact same vertical center axis at Y=0.585f
+                                                // to guarantee covering taller items without any horizontal drift.
+                                                delay(100)
+                                                safeTap(PointF(gearPt.x, 0.585f), "Lamp Gear (Upper Axis: ${gearPt.x}, 0.585)")
 
                                                 FloatingOverlayService.instance?.updateStatus("Tapped gear (${config.smokeLingerSec}s)")
                                                 sleepDelay = 1200L
