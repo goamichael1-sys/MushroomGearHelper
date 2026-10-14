@@ -194,6 +194,8 @@ class ScreenCaptureService : Service() {
                         val metricsMap = mutableMapOf<String, ColorFractions>()
                         val w = bitmap.width.toFloat()
                         val h = bitmap.height.toFloat()
+                        screenWidth = bitmap.width
+                        screenHeight = bitmap.height
 
                         for ((name, reg) in config.regions) {
                             val r = Rect(
@@ -276,12 +278,38 @@ class ScreenCaptureService : Service() {
 
                                     // Step 1: Tap Auto button next to lamp
                                     config.points["autoButton"]?.let { safeTap(it, "Auto Button") }
-                                    delay(1500)  // Wait for popup animation (was 900ms — increased for slower devices)
 
-                                    // Step 2: Tap Start button inside Auto-Use dialog
-                                    config.points["autoStart"]?.let { safeTap(it, "Auto Start") }
-                                    FloatingOverlayService.instance?.updateStatus("Watchdog: Auto Turned ON!")
-                                    delay(1200)
+                                    // Step 2: Poll for the Auto-Use dialog to appear (checks for bright green Start button)
+                                    // This guarantees we NEVER blindly click the inventory if the popup isn't open!
+                                    var dialogOpen = false
+                                    for (attempt in 1..8) {
+                                        delay(350)
+                                        val checkFrame = captureFrame()
+                                        if (checkFrame != null) {
+                                            val isOpen = DecisionLogic.isAutoUseDialog(checkFrame)
+                                            checkFrame.recycle()
+                                            if (isOpen) {
+                                                dialogOpen = true
+                                                break
+                                            }
+                                        }
+                                        // If still not open after 1.4s, retry tapping Auto button once
+                                        if (attempt == 4 && !dialogOpen) {
+                                            Log.i(TAG, "Auto dialog not open yet, retrying Auto button tap...")
+                                            config.points["autoButton"]?.let { safeTap(it, "Auto Button (retry)") }
+                                        }
+                                    }
+
+                                    // Step 3: ONLY tap Start when the dialog is verified OPEN!
+                                    if (dialogOpen) {
+                                        delay(300)
+                                        config.points["autoStart"]?.let { safeTap(it, "Auto Start") }
+                                        FloatingOverlayService.instance?.updateStatus("Watchdog: Auto Turned ON!")
+                                        delay(1200)
+                                    } else {
+                                        FloatingOverlayService.instance?.updateStatus("Watchdog: Auto missed, retrying...")
+                                        Log.w(TAG, "Auto-Use dialog did not appear - prevented misclicking inventory!")
+                                    }
                                 } else {
                                     // 3b. Periodic X click — does NOT reset lastProgressTime
                                     // IMPORTANT: matches extension logic — if X was clicked this tick,

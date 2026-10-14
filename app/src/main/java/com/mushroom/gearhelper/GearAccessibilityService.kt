@@ -45,7 +45,7 @@ class GearAccessibilityService : AccessibilityService() {
             lineTo(x, y)
         }
         val gesture = GestureDescription.Builder()
-            .addStroke(GestureDescription.StrokeDescription(clickPath, 0, 100))
+            .addStroke(GestureDescription.StrokeDescription(clickPath, 0, 150))
             .build()
 
         val dispatched = dispatchGesture(gesture, object : GestureResultCallback() {

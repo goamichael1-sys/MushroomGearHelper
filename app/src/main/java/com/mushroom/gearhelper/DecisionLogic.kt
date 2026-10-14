@@ -160,4 +160,38 @@ object DecisionLogic {
 
         return Decision(action, desc + note)
     }
+
+    /**
+     * Checks if the Auto-Use dialog is currently open by verifying the bright green Start button.
+     * When closed: green fraction is 0.00%.
+     * When open: green fraction is ~73.7%.
+     */
+    fun isAutoUseDialog(bitmap: Bitmap): Boolean {
+        val w = bitmap.width
+        val h = bitmap.height
+        val x0 = (0.40f * w).toInt()
+        val x1 = (0.60f * w).toInt()
+        val y0 = (0.63f * h).toInt()
+        val y1 = (0.67f * h).toInt()
+
+        if (x0 < 0 || y0 < 0 || x1 > w || y1 > h) return false
+        val width = x1 - x0
+        val height = y1 - y0
+        if (width <= 0 || height <= 0) return false
+
+        val pixels = IntArray(width * height)
+        bitmap.getPixels(pixels, 0, width, x0, y0, width, height)
+
+        var greenCount = 0
+        for (pixel in pixels) {
+            val r = (pixel shr 16) and 0xFF
+            val g = (pixel shr 8) and 0xFF
+            val b = pixel and 0xFF
+            if (g > 130 && g > r * 1.2f && g > b * 1.2f) {
+                greenCount++
+            }
+        }
+        val frac = greenCount.toFloat() / (width * height)
+        return frac >= 0.35f
+    }
 }
