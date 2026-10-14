@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Mushroom Gear Helper</string>
+    <string name="accessibility_service_description">Simulates taps on Sell and Equip buttons inside Legend of Mushroom based on screen detection.</string>
+</resources>
