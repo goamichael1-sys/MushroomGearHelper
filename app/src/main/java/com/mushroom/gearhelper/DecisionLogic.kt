@@ -14,10 +14,6 @@ object DecisionLogic {
         else -> "–"
     }
 
-    /**
-     * Converts RGB (0..255) to HSV:
-     * h: 0..360, s: 0..1, v: 0..1
-     */
     fun rgbToHsv(rInt: Int, gInt: Int, bInt: Int): FloatArray {
         val r = rInt / 255f
         val g = gInt / 255f
@@ -71,10 +67,17 @@ object DecisionLogic {
             val s = hsv[1]
             val v = hsv[2]
 
-            // Exact color rules from background.js
+            // Button and Arrow detection
             if ((hh <= 14f || hh >= 346f) && s >= 0.55f && v >= 0.55f) redCount++
             if (hh in 70f..160f && s >= 0.5f && v >= 0.45f) greenCount++
-            if (v >= 0.85f && s in 0.08f..0.55f && hh in 165f..225f) smokeCount++
+
+            // Smoke & Gear Sparkle detection (Supports Blue, Purple, Gold, Red clouds & sparkles!)
+            val isSmokeOrSparkle = (v >= 0.70f && s in 0.08f..0.70f && hh in 160f..235f) || // Blue/Cyan cloud
+                                   (v >= 0.40f && s >= 0.15f && hh in 240f..330f) ||        // Purple/Magenta cloud (Epic/Legendary)
+                                   (v >= 0.65f && s >= 0.30f && hh in 35f..68f) ||          // Gold/Yellow sparkles & cloud
+                                   (v >= 0.50f && s >= 0.35f && (hh <= 25f || hh >= 335f))  // Red/Orange cloud
+
+            if (isSmokeOrSparkle) smokeCount++
         }
 
         val total = (width * height).toFloat()
