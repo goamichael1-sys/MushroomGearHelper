@@ -3,7 +3,6 @@ package com.mushroom.gearhelper
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
-import android.os.Build
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 
@@ -21,12 +20,10 @@ class GearAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
-        Log.i(TAG, "Accessibility Service Connected")
+        Log.i(TAG, "Accessibility Service Connected and Ready")
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        // We do not need event-based triggers since we use frame-based screen detection
-    }
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
 
     override fun onInterrupt() {
         Log.w(TAG, "Accessibility Service Interrupted")
@@ -40,31 +37,33 @@ class GearAccessibilityService : AccessibilityService() {
 
     /**
      * Dispatches a tap gesture at the given screen coordinates (pixels).
+     * Uses a 100ms stroke to guarantee games register the touch down/up sequence.
      */
     fun tapAt(x: Float, y: Float, onComplete: ((Boolean) -> Unit)? = null) {
         val clickPath = Path().apply {
             moveTo(x, y)
+            lineTo(x, y)
         }
         val gesture = GestureDescription.Builder()
-            .addStroke(GestureDescription.StrokeDescription(clickPath, 0, 50))
+            .addStroke(GestureDescription.StrokeDescription(clickPath, 0, 100))
             .build()
 
         val dispatched = dispatchGesture(gesture, object : GestureResultCallback() {
             override fun onCompleted(gestureDescription: GestureDescription?) {
                 super.onCompleted(gestureDescription)
-                Log.d(TAG, "Tap successfully executed at ($x, $y)")
+                Log.i(TAG, "Tap executed successfully at ($x, $y)")
                 onComplete?.invoke(true)
             }
 
             override fun onCancelled(gestureDescription: GestureDescription?) {
                 super.onCancelled(gestureDescription)
-                Log.w(TAG, "Tap cancelled at ($x, $y)")
+                Log.w(TAG, "Tap was cancelled by system at ($x, $y)")
                 onComplete?.invoke(false)
             }
         }, null)
 
         if (!dispatched) {
-            Log.e(TAG, "Failed to dispatch gesture at ($x, $y)")
+            Log.e(TAG, "dispatchGesture returned false for ($x, $y) - check accessibility permissions")
             onComplete?.invoke(false)
         }
     }

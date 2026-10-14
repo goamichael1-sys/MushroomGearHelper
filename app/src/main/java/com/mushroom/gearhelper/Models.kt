@@ -15,9 +15,8 @@ data class Thresholds(
 )
 
 data class HelperConfig(
-    var dryRun: Boolean = true,
     var conflictMode: String = "stats", // "stats", "power", "pause"
-    var scanIdleMs: Long = 1500L,
+    var scanIdleMs: Long = 1200L,
     var scanPopupMs: Long = 700L,
     var postActionDelayMs: Long = 1300L,
     val weights: Map<String, Int> = mapOf("hp" to 2, "atk" to 3, "def" to 1),

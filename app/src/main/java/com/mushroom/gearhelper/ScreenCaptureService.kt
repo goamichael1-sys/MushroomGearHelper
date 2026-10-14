@@ -68,7 +68,7 @@ class ScreenCaptureService : Service() {
 
             val notification = NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle("Mushroom Gear Helper Active")
-                .setContentText("Reading game screen for gear comparison...")
+                .setContentText("Auto-clicking Sell/Equip/Gear in Legend of Mushroom...")
                 .setSmallIcon(android.R.drawable.ic_menu_view)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
                 .build()
@@ -98,7 +98,6 @@ class ScreenCaptureService : Service() {
                 val projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
                 mediaProjection = projectionManager.getMediaProjection(resultCode, resultData)
 
-                // Android 14 requires callback to be registered before createVirtualDisplay
                 mediaProjection?.registerCallback(object : MediaProjection.Callback() {
                     override fun onStop() {
                         super.onStop()
@@ -143,12 +142,17 @@ class ScreenCaptureService : Service() {
     fun startScanning() {
         scanJob?.cancel()
         scanJob = serviceScope.launch {
-            Log.i(TAG, "Starting gear scan loop...")
+            Log.i(TAG, "Starting gear scan loop (LIVE MODE)...")
             var lastAction = ""
             var retries = 0
+            var smokeSince = 0L
+            var lastGearTap = 0L
+            var lastCloseTap = System.currentTimeMillis()
+            var confirmAllowed = false
 
             while (isActive) {
                 var sleepDelay = config.scanIdleMs
+                val now = System.currentTimeMillis()
 
                 try {
                     val bitmap = captureFrame()
@@ -167,21 +171,33 @@ class ScreenCaptureService : Service() {
                             metricsMap[name] = DecisionLogic.analyzeRegion(bitmap, r)
                         }
 
-                        // Check dialog
+                        // 1. Check Dialog ("All attributes greater... continue selling?")
                         if (DecisionLogic.isDialog(metricsMap, config)) {
-                            FloatingOverlayService.instance?.updateStatus("Dialog: Cancelling")
-                            val cancelPt = config.points["cancel"]
-                            if (cancelPt != null && !config.dryRun) {
-                                GearAccessibilityService.instance?.tapAt(cancelPt.x * w, cancelPt.y * h)
+                            sleepDelay = config.postActionDelayMs
+                            if (confirmAllowed) {
+                                FloatingOverlayService.instance?.updateStatus("Confirming Sale")
+                                val pt = config.points["confirm"]
+                                if (pt != null) {
+                                    GearAccessibilityService.instance?.tapAt(pt.x * w, pt.y * h)
+                                }
+                                confirmAllowed = false
+                            } else {
+                                FloatingOverlayService.instance?.updateStatus("Dialog: Cancelling to re-check")
+                                val pt = config.points["cancel"]
+                                if (pt != null) {
+                                    GearAccessibilityService.instance?.tapAt(pt.x * w, pt.y * h)
+                                    confirmAllowed = true
+                                }
                             }
-                            sleepDelay = config.scanPopupMs
                         } else {
                             val popupReading = DecisionLogic.readPopup(metricsMap, config)
 
+                            // 2. Gear Comparison Popup Visible
                             if (popupReading.popup) {
+                                smokeSince = 0L
                                 sleepDelay = config.scanPopupMs
                                 val decision = DecisionLogic.decide(popupReading, config)
-                                val statusText = "${if (config.dryRun) "[DRY] " else ""}${decision.action.uppercase()}: ${decision.reason}"
+                                val statusText = "${decision.action.uppercase()}: ${decision.reason}"
                                 FloatingOverlayService.instance?.updateStatus(statusText)
 
                                 if (decision.action == "sell" || decision.action == "equip") {
@@ -192,13 +208,12 @@ class ScreenCaptureService : Service() {
                                     }
 
                                     if (retries <= 3) {
-                                        if (!config.dryRun) {
-                                            val pt = config.points[decision.action]
-                                            if (pt != null) {
-                                                GearAccessibilityService.instance?.tapAt(pt.x * w, pt.y * h)
-                                                lastAction = decision.action
-                                                sleepDelay = config.postActionDelayMs
-                                            }
+                                        val pt = config.points[decision.action]
+                                        if (pt != null) {
+                                            Log.i(TAG, "Tapping ${decision.action} at (${pt.x * w}, ${pt.y * h})")
+                                            GearAccessibilityService.instance?.tapAt(pt.x * w, pt.y * h)
+                                            lastAction = decision.action
+                                            sleepDelay = config.postActionDelayMs
                                         }
                                     } else {
                                         FloatingOverlayService.instance?.updateStatus("Paused: No effect after 4 tries")
@@ -207,9 +222,47 @@ class ScreenCaptureService : Service() {
                                     FloatingOverlayService.instance?.updateStatus("Paused: Unreadable gear")
                                 }
                             } else {
+                                // 3. No Popup Open -> Idle / Lamp Smoke / Periodic Close
                                 lastAction = ""
                                 retries = 0
-                                FloatingOverlayService.instance?.updateStatus("Idle (Waiting for popup)")
+
+                                // Periodic close spot (X) tap every 60s
+                                if (now - lastCloseTap >= 60000L) {
+                                    lastCloseTap = now
+                                    val closePt = config.points["close"]
+                                    if (closePt != null) {
+                                        Log.i(TAG, "Periodic close (X) tap at (${closePt.x * w}, ${closePt.y * h})")
+                                        GearAccessibilityService.instance?.tapAt(closePt.x * w, closePt.y * h)
+                                        FloatingOverlayService.instance?.updateStatus("Tapped close (X)")
+                                        sleepDelay = 1000L
+                                    }
+                                } else {
+                                    // Lamp Smoke / Gear detection above magic lamp
+                                    val smokeFrac = metricsMap["smoke"]?.smoke ?: 0f
+                                    val smokePresent = smokeFrac >= config.thresholds.smoke
+
+                                    if (smokePresent) {
+                                        if (smokeSince == 0L) smokeSince = now
+                                        val smokeDurationSec = (now - smokeSince) / 1000
+                                        FloatingOverlayService.instance?.updateStatus("Smoke ${smokeDurationSec}s (Tap gear...)")
+
+                                        // Smoke has lingered for >= 3s, tap the floating gear!
+                                        if (smokeDurationSec >= 3 && (now - lastGearTap >= 5000L)) {
+                                            lastGearTap = now
+                                            smokeSince = 0L
+                                            val gearPt = config.points["gear"]
+                                            if (gearPt != null) {
+                                                Log.i(TAG, "Tapping gear above lamp at (${gearPt.x * w}, ${gearPt.y * h})")
+                                                GearAccessibilityService.instance?.tapAt(gearPt.x * w, gearPt.y * h)
+                                                FloatingOverlayService.instance?.updateStatus("Tapped gear above lamp!")
+                                                sleepDelay = 1200L
+                                            }
+                                        }
+                                    } else {
+                                        smokeSince = 0L
+                                        FloatingOverlayService.instance?.updateStatus("Watching for gear / lamp…")
+                                    }
+                                }
                             }
                         }
                         bitmap.recycle()

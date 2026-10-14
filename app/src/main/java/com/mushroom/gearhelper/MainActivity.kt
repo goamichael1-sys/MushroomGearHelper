@@ -72,11 +72,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        binding.switchDryRun.setOnCheckedChangeListener { _, isChecked ->
-            config.dryRun = isChecked
-            ScreenCaptureService.instance?.config?.dryRun = isChecked
-        }
-
         binding.radioGroupConflict.setOnCheckedChangeListener { _, checkedId ->
             val mode = when (checkedId) {
                 R.id.radioPower -> "power"
