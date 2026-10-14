@@ -328,6 +328,9 @@ class ScreenCaptureService : Service() {
                                     // 3c. Smoke / Lamp Gear Linger Check
                                     // Only runs if X click did NOT fire this tick (matches extension's !did guard)
                                     if (!didClose && cloudPresent) {
+                                        // Kettle is actively producing gear -> refresh idle watchdog timer
+                                        lastProgressTime = now
+
                                         smokeMiss = 0
                                         smokeStreak++
 
@@ -336,7 +339,7 @@ class ScreenCaptureService : Service() {
                                         // ambient lamp animation false positives.
                                         if (smokeStreak >= 2 && smokeSince == 0L) {
                                             smokeSince = now
-                                            Log.i(TAG, "Gear confirmed! Cloud ${smokeFrac * 100}% for ${smokeStreak} scans. Starting ${config.smokeLingerSec}s linger timer...")
+                                            Log.i(TAG, "Gear confirmed! Cloud ${"%.1f".format(smokeFrac * 100)}% for ${smokeStreak} scans. Starting ${config.smokeLingerSec}s linger timer...")
                                         }
 
                                         if (smokeSince != 0L) {
@@ -347,7 +350,23 @@ class ScreenCaptureService : Service() {
                                                 lastGearTap = now
                                                 smokeStreak = 0
                                                 smokeSince = 0L
-                                                config.points["gear"]?.let { safeTap(it, "Lamp Gear") }
+
+                                                // Robust gear clicking:
+                                                // 1. Compute dynamic centroid of cloud/gear if available
+                                                val centroid = DecisionLogic.getCloudCentroid(bitmap)
+                                                val primaryX = centroid?.x ?: (config.points["gear"]?.x ?: 0.505f)
+                                                val tapY = config.points["gear"]?.y ?: 0.580f
+
+                                                // Primary tap on object center
+                                                safeTap(PointF(primaryX, tapY), "Lamp Gear (Centroid X=${"%.3f".format(primaryX)})")
+
+                                                // 2. Dual-tap protection: different objects have different centers
+                                                // (e.g. glasses at X=0.540 vs belt at X=0.466).
+                                                // Send a second tap 120ms later at complementary offset so neither side is missed!
+                                                val secondX = if (primaryX < 0.510f) 0.538f else 0.472f
+                                                delay(120)
+                                                safeTap(PointF(secondX, tapY), "Lamp Gear (Offset X=${"%.3f".format(secondX)})")
+
                                                 FloatingOverlayService.instance?.updateStatus("Tapped gear (${config.smokeLingerSec}s)")
                                                 sleepDelay = 1200L
                                             } else {
@@ -358,12 +377,16 @@ class ScreenCaptureService : Service() {
                                             FloatingOverlayService.instance?.updateStatus("Cloud seen (${smokeStreak}/2)...")
                                         }
                                     } else if (!didClose) {
-                                        // Cloud gone / not present — reset streak immediately
+                                        // Cloud gone / not present
+                                        // If gear was visible and now disappeared before our app clicked it,
+                                        // the GAME auto-sold it -> reset idle watchdog timer!
+                                        if (smokeStreak > 0 || smokeSince != 0L) {
+                                            lastProgressTime = now
+                                            Log.i(TAG, "Cloud gone (game auto-sold gear) -> reset idle watchdog timer.")
+                                        }
+
                                         smokeStreak = 0
                                         if (++smokeMiss >= 3) {  // tolerate short dips (matches extension smokeMiss>=3)
-                                            if (smokeSince != 0L) {
-                                                Log.i(TAG, "Cloud gone before ${config.smokeLingerSec}s (auto-sold). Resetting smoke timer.")
-                                            }
                                             smokeSince = 0L
                                         }
                                         // Always show watchdog countdown when watchdog is ON

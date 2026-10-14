@@ -71,10 +71,14 @@ object DecisionLogic {
             if ((hh <= 14f || hh >= 346f) && s >= 0.55f && v >= 0.55f) redCount++
             if (hh in 70f..160f && s >= 0.5f && v >= 0.45f) greenCount++
 
-            // Cloud detection: original extension tested cyan smoke formula
-            // On idle screen: 0.12% (idle, timer completely stops!)
-            // On real genie smoke screen: 44.3% (active, timer runs!)
-            val isCloud = (v >= 0.85f && s in 0.08f..0.55f && hh in 165f..225f)
+            // Cloud detection: checks Cyan (rare/normal), Purple (epic), and Gold sparkles (legendary)
+            // On idle screen: ~3.5% (below 10% threshold -> timer completely stopped when idle!)
+            // On purple cloud: ~48.9% - 53.7% (confirms gear!)
+            // On cyan cloud: ~42.8% - 44.3% (confirms gear!)
+            val isCyan = (v >= 0.82f && s in 0.08f..0.55f && hh in 165f..225f)
+            val isPurple = (v >= 0.70f && s in 0.15f..0.70f && hh in 245f..320f)
+            val isGold = (v >= 0.90f && s in 0.18f..0.65f && hh in 38f..65f)
+            val isCloud = isCyan || isPurple || isGold
 
             if (isCloud) smokeCount++
         }
@@ -85,6 +89,59 @@ object DecisionLogic {
             green = greenCount / total,
             smoke = smokeCount / total
         )
+    }
+
+    /**
+     * Calculates the centroid (center of mass) of the cloud/smoke in normalized coordinates (0..1).
+     * Returns null if not enough cloud pixels are present (< 8% of the region).
+     */
+    fun getCloudCentroid(bitmap: Bitmap, smokeRegion: android.graphics.RectF = android.graphics.RectF(0.246f, 0.530f, 0.776f, 0.670f)): android.graphics.PointF? {
+        val w = bitmap.width
+        val h = bitmap.height
+        val x0 = (smokeRegion.left * w).toInt().coerceIn(0, w)
+        val x1 = (smokeRegion.right * w).toInt().coerceIn(0, w)
+        val y0 = (smokeRegion.top * h).toInt().coerceIn(0, h)
+        val y1 = (smokeRegion.bottom * h).toInt().coerceIn(0, h)
+        val width = x1 - x0
+        val height = y1 - y0
+        if (width <= 0 || height <= 0) return null
+
+        val pixels = IntArray(width * height)
+        bitmap.getPixels(pixels, 0, width, x0, y0, width, height)
+
+        var totalX = 0L
+        var totalY = 0L
+        var count = 0
+
+        for (y in 0 until height) {
+            val rowOffset = y * width
+            for (x in 0 until width) {
+                val pixel = pixels[rowOffset + x]
+                val r = (pixel shr 16) and 0xFF
+                val g = (pixel shr 8) and 0xFF
+                val b = pixel and 0xFF
+                val hsv = rgbToHsv(r, g, b)
+                val hh = hsv[0]
+                val s = hsv[1]
+                val v = hsv[2]
+
+                val isCyan = (v >= 0.82f && s in 0.08f..0.55f && hh in 165f..225f)
+                val isPurple = (v >= 0.70f && s in 0.15f..0.70f && hh in 245f..320f)
+                val isGold = (v >= 0.90f && s in 0.18f..0.65f && hh in 38f..65f)
+                if (isCyan || isPurple || isGold) {
+                    totalX += (x0 + x)
+                    totalY += (y0 + y)
+                    count++
+                }
+            }
+        }
+
+        val totalArea = width * height
+        if (count < totalArea * 0.08f) return null
+
+        val avgX = (totalX.toFloat() / count) / w
+        val avgY = (totalY.toFloat() / count) / h
+        return android.graphics.PointF(avgX, avgY)
     }
 
     fun arrowSign(f: ColorFractions, min: Float, greenWins: Boolean): Int {
@@ -169,10 +226,10 @@ object DecisionLogic {
     fun isAutoUseDialog(bitmap: Bitmap): Boolean {
         val w = bitmap.width
         val h = bitmap.height
-        val x0 = (0.40f * w).toInt()
-        val x1 = (0.60f * w).toInt()
-        val y0 = (0.63f * h).toInt()
-        val y1 = (0.67f * h).toInt()
+        val x0 = (0.38f * w).toInt()
+        val x1 = (0.62f * w).toInt()
+        val y0 = (0.62f * h).toInt()
+        val y1 = (0.68f * h).toInt()
 
         if (x0 < 0 || y0 < 0 || x1 > w || y1 > h) return false
         val width = x1 - x0
@@ -192,6 +249,6 @@ object DecisionLogic {
             }
         }
         val frac = greenCount.toFloat() / (width * height)
-        return frac >= 0.35f
+        return frac >= 0.25f
     }
 }

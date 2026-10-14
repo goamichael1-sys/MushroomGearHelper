@@ -29,7 +29,7 @@ data class HelperConfig(
         "sell" to PointF(0.327f, 0.826f),
         "equip" to PointF(0.670f, 0.826f),
         "close" to PointF(0.966f, 0.756f),
-        "gear" to PointF(0.466f, 0.584f),       // Center of floating gear item
+        "gear" to PointF(0.505f, 0.580f),       // Center of floating gear item zone
         "confirm" to PointF(0.312f, 0.579f),
         "cancel" to PointF(0.685f, 0.577f),
         "autoButton" to PointF(0.810f, 0.800f), // Auto gear button in bottom resource bar (exact center)
@@ -43,7 +43,7 @@ data class HelperConfig(
         "hp" to RectF(0.763f, 0.600f, 0.813f, 0.621f),
         "atk" to RectF(0.763f, 0.625f, 0.813f, 0.646f),
         "def" to RectF(0.763f, 0.649f, 0.813f, 0.670f),
-        "smoke" to RectF(0.246f, 0.579f, 0.776f, 0.649f),
+        "smoke" to RectF(0.246f, 0.530f, 0.776f, 0.670f),
         "dlgConfirm" to RectF(0.215f, 0.566f, 0.405f, 0.592f),
         "dlgCancel" to RectF(0.600f, 0.566f, 0.775f, 0.592f)
     )
