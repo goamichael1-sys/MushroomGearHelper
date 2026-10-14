@@ -160,6 +160,8 @@ class ScreenCaptureService : Service() {
             var smokeMiss = 0
             var lastGearTap = 0L
             var lastCloseTap = System.currentTimeMillis()
+            // lastProgressTime only advances on REAL TAPS (sell/equip/gear/confirm).
+            // Cloud detection alone does NOT reset it, so the watchdog can count correctly.
             var lastProgressTime = System.currentTimeMillis()
             var confirmAllowed = false
 
@@ -186,17 +188,18 @@ class ScreenCaptureService : Service() {
 
                         // 1. Check Confirmation Dialog ("All attributes greater... continue selling?")
                         if (DecisionLogic.isDialog(metricsMap, config)) {
-                            lastProgressTime = now
                             smokeSince = 0L
                             smokeMiss = 0
                             sleepDelay = config.postActionDelayMs
                             if (confirmAllowed) {
                                 FloatingOverlayService.instance?.updateStatus("Confirming Sale")
                                 config.points["confirm"]?.let { safeTap(it, "Confirm") }
+                                lastProgressTime = now  // Tap happened
                                 confirmAllowed = false
                             } else {
                                 FloatingOverlayService.instance?.updateStatus("Dialog: Cancelling to re-check")
                                 config.points["cancel"]?.let { safeTap(it, "Cancel") }
+                                lastProgressTime = now  // Tap happened
                                 confirmAllowed = true
                             }
                         } else {
@@ -204,7 +207,6 @@ class ScreenCaptureService : Service() {
 
                             // 2. Gear Comparison Popup Visible -> Sell / Equip
                             if (popupReading.popup) {
-                                lastProgressTime = now
                                 smokeSince = 0L
                                 smokeMiss = 0
                                 sleepDelay = config.scanPopupMs
@@ -224,6 +226,7 @@ class ScreenCaptureService : Service() {
                                         if (pt != null) {
                                             safeTap(pt, decision.action)
                                             lastAction = decision.action
+                                            lastProgressTime = now  // Real tap -> reset idle timer
                                             sleepDelay = config.postActionDelayMs
                                         }
                                     } else {
@@ -233,54 +236,55 @@ class ScreenCaptureService : Service() {
                                     FloatingOverlayService.instance?.updateStatus("Paused: Unreadable gear")
                                 }
                             } else {
-                                // 3. No Popup Open -> Idle / Lamp Smoke Linger / Dynamic X-Click / 1-Min Auto Watchdog
+                                // 3. No Popup -> Idle / Smoke Linger / X-Click / Auto Watchdog
                                 lastAction = ""
                                 retries = 0
 
-                                // 3a. Watchdog Check: If no gear/popup for 1 min+, auto-turn on Auto!
-                                val watchdogMs = config.autoWatchdogSec * 1000L
+                                val smokeFrac = metricsMap["smoke"]?.smoke ?: 0f
+                                val cloudPresent = smokeFrac >= 0.10f
                                 val idleMs = now - lastProgressTime
-                                if (config.autoWatchdogEnabled && idleMs >= watchdogMs && smokeSince == 0L) {
+
+                                // 3a. Watchdog: if no real tap happened for N seconds, restart Auto
+                                val watchdogMs = config.autoWatchdogSec * 1000L
+                                if (config.autoWatchdogEnabled && idleMs >= watchdogMs) {
+                                    // Reset timer first so we don't spam taps every loop
                                     lastProgressTime = now
+                                    smokeSince = 0L  // Cancel stale smoke timer
                                     FloatingOverlayService.instance?.updateStatus("Watchdog: Restarting Auto...")
-                                    Log.i(TAG, "Watchdog triggered: Idle for ${idleMs / 1000}s. Tapping Auto -> Start...")
+                                    Log.i(TAG, "Watchdog triggered: ${idleMs / 1000}s idle >= ${config.autoWatchdogSec}s. Tapping Auto -> Start...")
 
                                     // Step 1: Tap Auto button next to lamp
                                     config.points["autoButton"]?.let { safeTap(it, "Auto Button") }
-                                    delay(900)
+                                    delay(1500)  // Wait for popup animation (was 900ms — increased for slower devices)
 
-                                    // Step 2: Tap green Start button inside Auto-Use dialog
+                                    // Step 2: Tap Start button inside Auto-Use dialog
                                     config.points["autoStart"]?.let { safeTap(it, "Auto Start") }
                                     FloatingOverlayService.instance?.updateStatus("Watchdog: Auto Turned ON!")
-                                    delay(1000)
+                                    delay(1200)
                                 } else {
-                                    // 3b. Periodic close spot (X) click (Customizable seconds, only when idle)
+                                    // 3b. Periodic X click — does NOT reset lastProgressTime
                                     val closeIntervalMs = config.closeIntervalSec * 1000L
                                     if (now - lastCloseTap >= closeIntervalMs && smokeSince == 0L) {
                                         lastCloseTap = now
-                                        // Tap close spot slightly inset from edge (0.935f) to prevent Android edge gesture swallowing
                                         val closePt = PointF(0.935f, 0.756f)
                                         safeTap(closePt, "Close (X)")
                                         FloatingOverlayService.instance?.updateStatus("Tapped Close (X)")
-                                        delay(800) // Pause so user sees the status
+                                        delay(800)
                                     }
 
-                                    // 3c. Smoke / Lamp Gear Linger Check:
-                                    val smokeFrac = metricsMap["smoke"]?.smoke ?: 0f
-                                    val cloudPresent = smokeFrac >= 0.10f
-
+                                    // 3c. Smoke / Lamp Gear Linger Check
                                     if (cloudPresent) {
-                                        lastProgressTime = now
                                         smokeMiss = 0
                                         if (smokeSince == 0L) {
                                             smokeSince = now
-                                            Log.i(TAG, "Genie released gear: Cloud detected (${smokeFrac * 100}%), starting ${config.smokeLingerSec}s timer...")
+                                            Log.i(TAG, "Genie released gear: Cloud ${smokeFrac * 100}%, starting ${config.smokeLingerSec}s timer...")
                                         }
 
                                         val lingeredSec = (now - smokeSince) / 1000
 
                                         if (lingeredSec >= config.smokeLingerSec && (now - lastGearTap >= 6000L)) {
                                             lastGearTap = now
+                                            lastProgressTime = now  // Real tap -> reset idle timer
                                             smokeSince = 0L
                                             config.points["gear"]?.let { safeTap(it, "Lamp Gear") }
                                             FloatingOverlayService.instance?.updateStatus("Tapped gear (${config.smokeLingerSec}s)")
@@ -289,17 +293,19 @@ class ScreenCaptureService : Service() {
                                             FloatingOverlayService.instance?.updateStatus("Gear floating: ${lingeredSec}s / ${config.smokeLingerSec}s")
                                         }
                                     } else {
+                                        // Cloud gone / not present
                                         if (++smokeMiss >= 2) {
                                             if (smokeSince != 0L) {
-                                                Log.i(TAG, "Cloud disappeared before ${config.smokeLingerSec}s (Auto-sold). Resetting timer.")
+                                                Log.i(TAG, "Cloud gone before ${config.smokeLingerSec}s (auto-sold). Resetting smoke timer.")
                                             }
                                             smokeSince = 0L
                                         }
-                                        val idleSec = (now - lastProgressTime) / 1000
-                                        if (config.autoWatchdogEnabled && idleSec >= 20) {
-                                            FloatingOverlayService.instance?.updateStatus("Watching (${idleSec}s/${config.autoWatchdogSec}s)")
+                                        // Always show watchdog countdown when watchdog is ON
+                                        if (config.autoWatchdogEnabled) {
+                                            val idleSec = idleMs / 1000
+                                            FloatingOverlayService.instance?.updateStatus("Idle ${idleSec}s / ${config.autoWatchdogSec}s")
                                         } else {
-                                            FloatingOverlayService.instance?.updateStatus("Watching for gear…")
+                                            FloatingOverlayService.instance?.updateStatus("Watching for gear...")
                                         }
                                     }
                                 }
