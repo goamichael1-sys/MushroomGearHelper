@@ -29,10 +29,10 @@ data class HelperConfig(
         "sell" to PointF(0.327f, 0.826f),
         "equip" to PointF(0.670f, 0.826f),
         "close" to PointF(0.966f, 0.756f),
-        "gear" to PointF(0.514f, 0.609f),       // Center of floating gear item zone (exact extension position)
+        "gear" to PointF(0.514f, 0.609f),       // Center of floating gear item (from original extension defaults.js)
         "confirm" to PointF(0.312f, 0.579f),
         "cancel" to PointF(0.685f, 0.577f),
-        "autoButton" to PointF(0.778f, 0.787f), // Auto gear button in bottom resource bar (exact green dot)
+        "autoButton" to PointF(0.797f, 0.836f), // Auto cogwheel button - measured from green annotation in screenshot
         "autoStart" to PointF(0.502f, 0.650f)   // Start button inside Auto-Use popup (exact center)
     ),
     val regions: Map<String, RectF> = mapOf(

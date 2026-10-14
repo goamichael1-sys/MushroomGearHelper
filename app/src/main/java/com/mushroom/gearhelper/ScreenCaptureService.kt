@@ -351,16 +351,11 @@ class ScreenCaptureService : Service() {
                                                 smokeStreak = 0
                                                 smokeSince = 0L
 
-                                                // Robust gear clicking (from original Chrome extension defaults.js):
-                                                // 1. Primary tap at the exact proven coordinate (0.514f, 0.609f).
-                                                // This targets the exact center of all floating gears, especially little gears!
+                                                // Gear clicking: use exact coordinate from original Chrome extension
+                                                // (defaults.js: gear: [0.514, 0.609])
+                                                // Single precise tap on the fixed center — works for all gear sizes!
                                                 val gearPt = config.points["gear"] ?: PointF(0.514f, 0.609f)
-                                                safeTap(gearPt, "Lamp Gear (Primary: ${gearPt.x}, ${gearPt.y})")
-
-                                                // 2. Dual-tap along the exact same vertical center axis at Y=0.585f
-                                                // to guarantee covering taller items without any horizontal drift.
-                                                delay(100)
-                                                safeTap(PointF(gearPt.x, 0.585f), "Lamp Gear (Upper Axis: ${gearPt.x}, 0.585)")
+                                                safeTap(gearPt, "Lamp Gear (${gearPt.x}, ${gearPt.y})")
 
                                                 FloatingOverlayService.instance?.updateStatus("Tapped gear (${config.smokeLingerSec}s)")
                                                 sleepDelay = 1200L
