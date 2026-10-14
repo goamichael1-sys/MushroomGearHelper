@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -15,6 +16,10 @@ import androidx.core.content.ContextCompat
 import com.mushroom.gearhelper.databinding.ActivityMainBinding
 
 class MainActivity : AppCompatActivity() {
+
+    companion object {
+        private const val TAG = "MainActivity"
+    }
 
     private lateinit var binding: ActivityMainBinding
     private val config = HelperConfig()
@@ -45,17 +50,26 @@ class MainActivity : AppCompatActivity() {
     private fun setupListeners() {
         binding.btnOverlayPermission.setOnClickListener {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
-                val intent = Intent(
-                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                    Uri.parse("package:$packageName")
-                )
-                startActivity(intent)
+                try {
+                    val intent = Intent(
+                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:$packageName")
+                    )
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION)
+                    startActivity(intent)
+                }
             }
         }
 
         binding.btnAccessibilityPermission.setOnClickListener {
-            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-            startActivity(intent)
+            try {
+                val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                startActivity(intent)
+            } catch (e: Exception) {
+                Toast.makeText(this, "Open Android Settings -> Accessibility", Toast.LENGTH_LONG).show()
+            }
         }
 
         binding.switchDryRun.setOnCheckedChangeListener { _, isChecked ->
@@ -83,9 +97,13 @@ class MainActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
-            // Launch Screen Capture request
-            val projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-            mediaProjectionLauncher.launch(projectionManager.createScreenCaptureIntent())
+            try {
+                val projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+                mediaProjectionLauncher.launch(projectionManager.createScreenCaptureIntent())
+            } catch (e: Exception) {
+                Log.e(TAG, "Error requesting screen capture: ${e.message}", e)
+                Toast.makeText(this, "Failed to request screen capture: ${e.message}", Toast.LENGTH_LONG).show()
+            }
         }
     }
 
@@ -113,21 +131,22 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startServices(resultCode: Int, data: Intent) {
-        // Start Screen Capture Service
-        val captureIntent = Intent(this, ScreenCaptureService::class.java).apply {
-            putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, resultCode)
-            putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, data)
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(captureIntent)
-        } else {
-            startService(captureIntent)
-        }
+        try {
+            val captureIntent = Intent(this, ScreenCaptureService::class.java).apply {
+                putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, resultCode)
+                putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, data)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(captureIntent)
+            } else {
+                startService(captureIntent)
+            }
 
-        // Start Floating Overlay Service
-        startService(Intent(this, FloatingOverlayService::class.java))
-
-        // Minimize app so game is visible with overlay
-        moveTaskToBack(true)
+            startService(Intent(this, FloatingOverlayService::class.java))
+            moveTaskToBack(true)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error starting services: ${e.message}", e)
+            Toast.makeText(this, "Error starting services: ${e.message}", Toast.LENGTH_LONG).show()
+        }
     }
 }

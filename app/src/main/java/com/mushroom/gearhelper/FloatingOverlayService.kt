@@ -6,13 +6,16 @@ import android.content.Intent
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import android.view.*
 import android.widget.TextView
+import androidx.appcompat.view.ContextThemeWrapper
 import androidx.core.content.ContextCompat
 
 class FloatingOverlayService : Service() {
 
     companion object {
+        private const val TAG = "FloatingOverlayService"
         var instance: FloatingOverlayService? = null
             private set
     }
@@ -28,12 +31,17 @@ class FloatingOverlayService : Service() {
     override fun onCreate() {
         super.onCreate()
         instance = this
-        initFloatingWidget()
+        try {
+            initFloatingWidget()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error initializing floating widget: ${e.message}", e)
+        }
     }
 
     private fun initFloatingWidget() {
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        val inflater = LayoutInflater.from(this)
+        val contextThemeWrapper = ContextThemeWrapper(this, R.style.Theme_MushroomGearHelper)
+        val inflater = LayoutInflater.from(contextThemeWrapper)
         floatView = inflater.inflate(R.layout.layout_floating_widget, null)
 
         val layoutParams = WindowManager.LayoutParams(
@@ -66,7 +74,6 @@ class FloatingOverlayService : Service() {
             stopSelf()
         }
 
-        // Draggable touch listener
         dragHandle?.setOnTouchListener(object : View.OnTouchListener {
             private var initialX = 0
             private var initialY = 0
@@ -80,7 +87,7 @@ class FloatingOverlayService : Service() {
                         initialY = layoutParams.y
                         initialTouchX = event.rawX
                         initialTouchY = event.rawY
-                        return false // allow click through if not dragged
+                        return false
                     }
                     MotionEvent.ACTION_MOVE -> {
                         val dx = (event.rawX - initialTouchX).toInt()
@@ -88,7 +95,11 @@ class FloatingOverlayService : Service() {
                         if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
                             layoutParams.x = initialX + dx
                             layoutParams.y = initialY + dy
-                            windowManager?.updateViewLayout(floatView, layoutParams)
+                            try {
+                                windowManager?.updateViewLayout(floatView, layoutParams)
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Error updating overlay layout: ${e.message}")
+                            }
                             return true
                         }
                     }
@@ -122,7 +133,11 @@ class FloatingOverlayService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         if (floatView != null) {
-            windowManager?.removeView(floatView)
+            try {
+                windowManager?.removeView(floatView)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error removing float view: ${e.message}")
+            }
             floatView = null
         }
         ScreenCaptureService.instance?.stopScanning()

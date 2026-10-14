@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.app.*
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
 import android.graphics.PixelFormat
 import android.graphics.Rect
@@ -14,7 +15,9 @@ import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.util.DisplayMetrics
 import android.util.Log
 import android.view.WindowManager
@@ -49,61 +52,92 @@ class ScreenCaptureService : Service() {
     override fun onCreate() {
         super.onCreate()
         instance = this
-        startForegroundNotification()
     }
 
     private fun startForegroundNotification() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "Screen Capture Service",
-                NotificationManager.IMPORTANCE_LOW
-            )
-            val manager = getSystemService(NotificationManager::class.java)
-            manager?.createNotificationChannel(channel)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val channel = NotificationChannel(
+                    CHANNEL_ID,
+                    "Screen Capture Service",
+                    NotificationManager.IMPORTANCE_LOW
+                )
+                val manager = getSystemService(NotificationManager::class.java)
+                manager?.createNotificationChannel(channel)
+            }
+
+            val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+                .setContentTitle("Mushroom Gear Helper Active")
+                .setContentText("Reading game screen for gear comparison...")
+                .setSmallIcon(android.R.drawable.ic_menu_view)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .build()
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error starting foreground notification: ${e.message}", e)
         }
-
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Mushroom Gear Helper Active")
-            .setContentText("Reading game screen for gear comparison...")
-            .setSmallIcon(android.R.drawable.ic_menu_view)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .build()
-
-        startForeground(NOTIFICATION_ID, notification)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        startForegroundNotification()
+
         val resultCode = intent?.getIntExtra(EXTRA_RESULT_CODE, Activity.RESULT_CANCELED) ?: Activity.RESULT_CANCELED
         val resultData = intent?.getParcelableExtra<Intent>(EXTRA_RESULT_DATA)
 
         if (resultCode == Activity.RESULT_OK && resultData != null) {
-            val projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-            mediaProjection = projectionManager.getMediaProjection(resultCode, resultData)
-            setupVirtualDisplay()
+            try {
+                val projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+                mediaProjection = projectionManager.getMediaProjection(resultCode, resultData)
+
+                // Android 14 requires callback to be registered before createVirtualDisplay
+                mediaProjection?.registerCallback(object : MediaProjection.Callback() {
+                    override fun onStop() {
+                        super.onStop()
+                        Log.i(TAG, "MediaProjection stopped")
+                        stopScanning()
+                    }
+                }, Handler(Looper.getMainLooper()))
+
+                setupVirtualDisplay()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to initialize MediaProjection: ${e.message}", e)
+            }
         }
         return START_NOT_STICKY
     }
 
     @SuppressLint("WrongConstant")
     private fun setupVirtualDisplay() {
-        val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        val metrics = DisplayMetrics()
-        @Suppress("DEPRECATION")
-        wm.defaultDisplay.getRealMetrics(metrics)
+        try {
+            val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+            val metrics = DisplayMetrics()
+            @Suppress("DEPRECATION")
+            wm.defaultDisplay.getRealMetrics(metrics)
 
-        val width = metrics.widthPixels
-        val height = metrics.heightPixels
-        val density = metrics.densityDpi
+            val width = metrics.widthPixels
+            val height = metrics.heightPixels
+            val density = metrics.densityDpi
 
-        imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
-        virtualDisplay = mediaProjection?.createVirtualDisplay(
-            "ScreenCapture",
-            width, height, density,
-            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-            imageReader?.surface, null, null
-        )
-        Log.i(TAG, "Virtual display setup for ${width}x${height}")
+            imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
+            virtualDisplay = mediaProjection?.createVirtualDisplay(
+                "ScreenCapture",
+                width, height, density,
+                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                imageReader?.surface, null, null
+            )
+            Log.i(TAG, "Virtual display setup for ${width}x${height}")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in setupVirtualDisplay: ${e.message}", e)
+        }
     }
 
     fun startScanning() {
@@ -225,9 +259,13 @@ class ScreenCaptureService : Service() {
         super.onDestroy()
         stopScanning()
         serviceScope.cancel()
-        virtualDisplay?.release()
-        imageReader?.close()
-        mediaProjection?.stop()
+        try {
+            virtualDisplay?.release()
+            imageReader?.close()
+            mediaProjection?.stop()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error releasing resources: ${e.message}")
+        }
         instance = null
     }
 }
