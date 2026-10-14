@@ -3,6 +3,7 @@ package com.mushroom.gearhelper
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
@@ -19,9 +20,14 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG = "MainActivity"
+        private const val PREFS_NAME = "MushroomPrefs"
+        private const val KEY_SMOKE_LINGER = "smoke_linger_sec"
+        private const val KEY_CLOSE_INTERVAL = "close_interval_sec"
+        private const val KEY_CONFLICT_MODE = "conflict_mode"
     }
 
     private lateinit var binding: ActivityMainBinding
+    private lateinit var prefs: SharedPreferences
     private val config = HelperConfig()
 
     private val mediaProjectionLauncher = registerForActivityResult(
@@ -39,12 +45,36 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        loadSavedPreferences()
         setupListeners()
     }
 
     override fun onResume() {
         super.onResume()
         updatePermissionStatus()
+    }
+
+    private fun loadSavedPreferences() {
+        val savedSmokeLinger = prefs.getInt(KEY_SMOKE_LINGER, 5)
+        val savedCloseInterval = prefs.getInt(KEY_CLOSE_INTERVAL, 30)
+        val savedConflictMode = prefs.getString(KEY_CONFLICT_MODE, "stats") ?: "stats"
+
+        config.smokeLingerSec = savedSmokeLinger
+        config.closeIntervalSec = savedCloseInterval
+        config.conflictMode = savedConflictMode
+
+        binding.sliderSmokeLinger.value = savedSmokeLinger.toFloat().coerceIn(2f, 15f)
+        binding.tvSmokeLingerLabel.text = "Smoke Hover Duration: ${savedSmokeLinger}s"
+
+        binding.sliderCloseInterval.value = savedCloseInterval.toFloat().coerceIn(10f, 120f)
+        binding.tvCloseIntervalLabel.text = "Close (X) Click Interval: ${savedCloseInterval}s"
+
+        when (savedConflictMode) {
+            "power" -> binding.radioPower.isChecked = true
+            "pause" -> binding.radioPause.isChecked = true
+            else -> binding.radioStats.isChecked = true
+        }
     }
 
     private fun setupListeners() {
@@ -72,6 +102,29 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        // Smoke Linger Slider
+        binding.sliderSmokeLinger.addOnChangeListener { _, value, fromUser ->
+            if (fromUser) {
+                val sec = value.toInt()
+                config.smokeLingerSec = sec
+                binding.tvSmokeLingerLabel.text = "Smoke Hover Duration: ${sec}s"
+                prefs.edit().putInt(KEY_SMOKE_LINGER, sec).apply()
+                ScreenCaptureService.instance?.config?.smokeLingerSec = sec
+            }
+        }
+
+        // Close (X) Interval Slider
+        binding.sliderCloseInterval.addOnChangeListener { _, value, fromUser ->
+            if (fromUser) {
+                val sec = value.toInt()
+                config.closeIntervalSec = sec
+                binding.tvCloseIntervalLabel.text = "Close (X) Click Interval: ${sec}s"
+                prefs.edit().putInt(KEY_CLOSE_INTERVAL, sec).apply()
+                ScreenCaptureService.instance?.config?.closeIntervalSec = sec
+            }
+        }
+
+        // Conflict Radio Group
         binding.radioGroupConflict.setOnCheckedChangeListener { _, checkedId ->
             val mode = when (checkedId) {
                 R.id.radioPower -> "power"
@@ -79,6 +132,7 @@ class MainActivity : AppCompatActivity() {
                 else -> "stats"
             }
             config.conflictMode = mode
+            prefs.edit().putString(KEY_CONFLICT_MODE, mode).apply()
             ScreenCaptureService.instance?.config?.conflictMode = mode
         }
 
@@ -135,6 +189,13 @@ class MainActivity : AppCompatActivity() {
                 startForegroundService(captureIntent)
             } else {
                 startService(captureIntent)
+            }
+
+            // Sync current config into service
+            ScreenCaptureService.instance?.config?.let {
+                it.smokeLingerSec = config.smokeLingerSec
+                it.closeIntervalSec = config.closeIntervalSec
+                it.conflictMode = config.conflictMode
             }
 
             startService(Intent(this, FloatingOverlayService::class.java))

@@ -226,55 +226,54 @@ class ScreenCaptureService : Service() {
                                     FloatingOverlayService.instance?.updateStatus("Paused: Unreadable gear")
                                 }
                             } else {
-                                // 3. No Popup Open -> Idle / Lamp Smoke Linger / 30s Close Spot
+                                // 3. No Popup Open -> Idle / Lamp Smoke Linger / Dynamic X-Click
                                 lastAction = ""
                                 retries = 0
 
-                                // 3a. Periodic close spot (X) click every 30 seconds (ONLY when completely idle)
-                                if (now - lastCloseTap >= 30000L && smokeSince == 0L) {
+                                // 3a. Periodic close spot (X) click (Customizable seconds, only when idle)
+                                val closeIntervalMs = config.closeIntervalSec * 1000L
+                                if (now - lastCloseTap >= closeIntervalMs && smokeSince == 0L) {
                                     lastCloseTap = now
                                     val closePt = config.points["close"]
                                     if (closePt != null) {
-                                        Log.i(TAG, "30s Periodic Close (X) tap at (${closePt.x * w}, ${closePt.y * h})")
+                                        Log.i(TAG, "${config.closeIntervalSec}s Periodic Close (X) tap at (${closePt.x * w}, ${closePt.y * h})")
                                         GearAccessibilityService.instance?.tapAt(closePt.x * w, closePt.y * h)
                                         FloatingOverlayService.instance?.updateStatus("Tapped Close (X)")
                                     }
                                 }
 
                                 // 3b. Smoke / Lamp Gear Linger Check:
-                                // Real cloud coverage must be at least 10%
                                 val smokeFrac = metricsMap["smoke"]?.smoke ?: 0f
                                 val cloudPresent = smokeFrac >= 0.10f
 
                                 if (cloudPresent) {
                                     smokeMiss = 0
-                                    // Start the timer when the cloud first appears!
                                     if (smokeSince == 0L) {
                                         smokeSince = now
-                                        Log.i(TAG, "Genie released gear: Cloud detected (${smokeFrac * 100}%), starting 5s timer...")
+                                        Log.i(TAG, "Genie released gear: Cloud detected (${smokeFrac * 100}%), starting ${config.smokeLingerSec}s timer...")
                                     }
 
                                     val lingeredSec = (now - smokeSince) / 1000
 
-                                    // If gear stays for 5s+ without being auto-sold by the game:
-                                    if (lingeredSec >= 5 && (now - lastGearTap >= 6000L)) {
+                                    // Check against user's configured hover duration
+                                    if (lingeredSec >= config.smokeLingerSec && (now - lastGearTap >= 6000L)) {
                                         lastGearTap = now
                                         smokeSince = 0L
                                         val gearPt = config.points["gear"]
                                         if (gearPt != null) {
                                             Log.i(TAG, "Gear lingered ${lingeredSec}s -> Tapping gear at (${gearPt.x * w}, ${gearPt.y * h})")
                                             GearAccessibilityService.instance?.tapAt(gearPt.x * w, gearPt.y * h)
-                                            FloatingOverlayService.instance?.updateStatus("Tapped gear (lingered 5s)")
+                                            FloatingOverlayService.instance?.updateStatus("Tapped gear (${config.smokeLingerSec}s)")
                                             sleepDelay = 1200L
                                         }
                                     } else {
-                                        FloatingOverlayService.instance?.updateStatus("Gear floating: ${lingeredSec}s / 5s")
+                                        FloatingOverlayService.instance?.updateStatus("Gear floating: ${lingeredSec}s / ${config.smokeLingerSec}s")
                                     }
                                 } else {
-                                    // If cloud vanishes (auto-sold by game), reset timer after 2 empty scans
+                                    // If cloud vanishes (auto-sold), reset timer after 2 empty scans
                                     if (++smokeMiss >= 2) {
                                         if (smokeSince != 0L) {
-                                            Log.i(TAG, "Cloud disappeared before 5s (Gear was auto-sold). Timer reset, no click.")
+                                            Log.i(TAG, "Cloud disappeared before ${config.smokeLingerSec}s (Auto-sold). Resetting timer.")
                                         }
                                         smokeSince = 0L
                                     }

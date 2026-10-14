@@ -96,7 +96,7 @@
                 app:cornerRadius="8dp" />
         </LinearLayout>
 
-        <!-- Settings Card -->
+        <!-- Timing Settings Card -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -108,7 +108,82 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Options"
+                android:text="Timing Options"
+                android:textColor="@color/white"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <!-- Smoke Hover Linger Slider -->
+            <TextView
+                android:id="@+id/tvSmokeLingerLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="Smoke Hover Duration: 5s"
+                android:textColor="@color/text_primary"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="How long gear must float before auto-tapping (lets auto-sales pass)"
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp" />
+
+            <com.google.android.material.slider.Slider
+                android:id="@+id/sliderSmokeLinger"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:valueFrom="2.0"
+                android:valueTo="15.0"
+                android:stepSize="1.0"
+                android:value="5.0" />
+
+            <!-- Close (X) Click Interval Slider -->
+            <TextView
+                android:id="@+id/tvCloseIntervalLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="Close (X) Click Interval: 30s"
+                android:textColor="@color/text_primary"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="How often to tap the Close (X) spot when idle"
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp" />
+
+            <com.google.android.material.slider.Slider
+                android:id="@+id/sliderCloseInterval"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:valueFrom="10.0"
+                android:valueTo="120.0"
+                android:stepSize="5.0"
+                android:value="30.0" />
+
+        </LinearLayout>
+
+        <!-- Decision Settings Card -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Decision Rule"
                 android:textColor="@color/white"
                 android:textSize="16sp"
                 android:textStyle="bold" />

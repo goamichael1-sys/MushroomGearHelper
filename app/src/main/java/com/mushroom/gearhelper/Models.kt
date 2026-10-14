@@ -16,6 +16,8 @@ data class Thresholds(
 
 data class HelperConfig(
     var conflictMode: String = "stats", // "stats", "power", "pause"
+    var smokeLingerSec: Int = 5,        // seconds gear must linger before tapping
+    var closeIntervalSec: Int = 30,     // seconds interval between X clicks
     var scanIdleMs: Long = 1200L,
     var scanPopupMs: Long = 700L,
     var postActionDelayMs: Long = 1300L,
