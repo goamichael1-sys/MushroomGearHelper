@@ -160,8 +160,9 @@ class ScreenCaptureService : Service() {
             var smokeMiss = 0
             var lastGearTap = 0L
             var lastCloseTap = System.currentTimeMillis()
-            // lastProgressTime only advances on REAL TAPS (sell/equip/gear/confirm).
-            // Cloud detection alone does NOT reset it, so the watchdog can count correctly.
+            // lastProgressTime resets ONLY on completed gear actions: Sell, Equip, Confirm (= a sell).
+            // Cancel (re-check), gear tap, X click, and cloud detection do NOT reset it.
+            // → If no sell/equip for 60s, watchdog fires and restarts Auto.
             var lastProgressTime = System.currentTimeMillis()
             var confirmAllowed = false
 
@@ -194,12 +195,13 @@ class ScreenCaptureService : Service() {
                             if (confirmAllowed) {
                                 FloatingOverlayService.instance?.updateStatus("Confirming Sale")
                                 config.points["confirm"]?.let { safeTap(it, "Confirm") }
-                                lastProgressTime = now  // Tap happened
+                                lastProgressTime = now  // Confirm = gear was sold → reset timer
                                 confirmAllowed = false
                             } else {
                                 FloatingOverlayService.instance?.updateStatus("Dialog: Cancelling to re-check")
                                 config.points["cancel"]?.let { safeTap(it, "Cancel") }
-                                lastProgressTime = now  // Tap happened
+                                // NOTE: Cancel is just a re-check — no sell has happened yet.
+                                // Do NOT reset lastProgressTime here.
                                 confirmAllowed = true
                             }
                         } else {
@@ -290,7 +292,10 @@ class ScreenCaptureService : Service() {
                                         // Cooldown 8s between gear taps (matches extension tapGearCooldownSec=8)
                                         if (lingeredSec >= config.smokeLingerSec && (now - lastGearTap >= 8000L)) {
                                             lastGearTap = now
-                                            lastProgressTime = now  // Real tap -> reset idle timer
+                                            // NOTE: do NOT reset lastProgressTime here.
+                                            // If this was a false-positive smoke (idle lamp animation), the watchdog
+                                            // must keep counting. If it was real, the subsequent Sell/Equip tap will
+                                            // reset lastProgressTime at that point.
                                             smokeSince = 0L
                                             config.points["gear"]?.let { safeTap(it, "Lamp Gear") }
                                             FloatingOverlayService.instance?.updateStatus("Tapped gear (${config.smokeLingerSec}s)")
