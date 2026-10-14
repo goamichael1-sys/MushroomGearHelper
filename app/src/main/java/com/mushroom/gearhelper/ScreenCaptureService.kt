@@ -145,7 +145,8 @@ class ScreenCaptureService : Service() {
             Log.i(TAG, "Starting gear scan loop...")
             var lastAction = ""
             var retries = 0
-            var idleSince = System.currentTimeMillis()
+            var smokeSince = 0L
+            var smokeMiss = 0
             var lastGearTap = 0L
             var lastCloseTap = System.currentTimeMillis()
             var confirmAllowed = false
@@ -171,9 +172,10 @@ class ScreenCaptureService : Service() {
                             metricsMap[name] = DecisionLogic.analyzeRegion(bitmap, r)
                         }
 
-                        // 1. Check Confirmation Dialog
+                        // 1. Check Confirmation Dialog ("All attributes greater... continue selling?")
                         if (DecisionLogic.isDialog(metricsMap, config)) {
-                            idleSince = now
+                            smokeSince = 0L
+                            smokeMiss = 0
                             sleepDelay = config.postActionDelayMs
                             if (confirmAllowed) {
                                 FloatingOverlayService.instance?.updateStatus("Confirming Sale")
@@ -193,9 +195,10 @@ class ScreenCaptureService : Service() {
                         } else {
                             val popupReading = DecisionLogic.readPopup(metricsMap, config)
 
-                            // 2. Gear Comparison Popup Visible
+                            // 2. Gear Comparison Popup Visible -> Sell / Equip
                             if (popupReading.popup) {
-                                idleSince = now
+                                smokeSince = 0L
+                                smokeMiss = 0
                                 sleepDelay = config.scanPopupMs
                                 val decision = DecisionLogic.decide(popupReading, config)
                                 val statusText = "${decision.action.uppercase()}: ${decision.reason}"
@@ -223,43 +226,53 @@ class ScreenCaptureService : Service() {
                                     FloatingOverlayService.instance?.updateStatus("Paused: Unreadable gear")
                                 }
                             } else {
-                                // 3. No Popup Open -> Idle / Lamp Smoke / Auto-Tap Gear
+                                // 3. No Popup Open -> Idle / Lamp Smoke Linger / 30s Close Spot
                                 lastAction = ""
                                 retries = 0
 
-                                // Periodic close spot (X) tap every 60s
-                                if (now - lastCloseTap >= 60000L) {
+                                // 3a. Periodic close spot (X) click every 30 seconds
+                                if (now - lastCloseTap >= 30000L) {
                                     lastCloseTap = now
                                     val closePt = config.points["close"]
                                     if (closePt != null) {
-                                        Log.i(TAG, "Periodic close (X) tap at (${closePt.x * w}, ${closePt.y * h})")
+                                        Log.i(TAG, "30s Periodic Close (X) tap at (${closePt.x * w}, ${closePt.y * h})")
                                         GearAccessibilityService.instance?.tapAt(closePt.x * w, closePt.y * h)
-                                        FloatingOverlayService.instance?.updateStatus("Tapped close (X)")
-                                        sleepDelay = 1000L
+                                        FloatingOverlayService.instance?.updateStatus("Tapped Close (X)")
                                     }
-                                } else {
-                                    // Check gear / smoke cloud presence above lamp
-                                    val smokeFrac = metricsMap["smoke"]?.smoke ?: 0f
-                                    val smokePresent = smokeFrac >= 0.04f
-                                    val idleDurationMs = now - idleSince
+                                }
 
-                                    // If smoke/cloud/sparkles are visible, OR if idle for > 2.5s without popup:
-                                    val shouldTapGear = (smokePresent && (now - lastGearTap >= 2000L)) ||
-                                                        (idleDurationMs >= 2500L && (now - lastGearTap >= 3000L))
+                                // 3b. Smoke / Lamp Gear Linger Check:
+                                // ONLY click if the gear has NOT been auto-sold and lingered for 5s+!
+                                val smokeFrac = metricsMap["smoke"]?.smoke ?: 0f
+                                val smokePresent = smokeFrac >= 0.04f
 
-                                    if (shouldTapGear) {
+                                if (smokePresent) {
+                                    smokeMiss = 0
+                                    if (smokeSince == 0L) {
+                                        smokeSince = now
+                                    }
+                                    val lingeredSec = (now - smokeSince) / 1000
+
+                                    // Linger 5s+ before tapping gear
+                                    if (lingeredSec >= 5 && (now - lastGearTap >= 6000L)) {
                                         lastGearTap = now
-                                        idleSince = now
+                                        smokeSince = 0L
                                         val gearPt = config.points["gear"]
                                         if (gearPt != null) {
-                                            Log.i(TAG, "Auto-tapping gear at (${gearPt.x * w}, ${gearPt.y * h}) [smoke: ${smokeFrac}]")
+                                            Log.i(TAG, "Gear lingered ${lingeredSec}s -> Tapping gear at (${gearPt.x * w}, ${gearPt.y * h})")
                                             GearAccessibilityService.instance?.tapAt(gearPt.x * w, gearPt.y * h)
-                                            FloatingOverlayService.instance?.updateStatus("Tapping Lamp Gear!")
-                                            sleepDelay = 1000L
+                                            FloatingOverlayService.instance?.updateStatus("Tapped gear (lingered 5s)")
+                                            sleepDelay = 1200L
                                         }
                                     } else {
-                                        FloatingOverlayService.instance?.updateStatus("Watching for gear…")
+                                        FloatingOverlayService.instance?.updateStatus("Smoke lingering: ${lingeredSec}s / 5s")
                                     }
+                                } else {
+                                    // If smoke is absent for 3 consecutive checks (meaning game auto-sold it), reset counter
+                                    if (++smokeMiss >= 3) {
+                                        smokeSince = 0L
+                                    }
+                                    FloatingOverlayService.instance?.updateStatus("Watching for gear…")
                                 }
                             }
                         }
