@@ -263,17 +263,22 @@ class ScreenCaptureService : Service() {
                                     delay(1200)
                                 } else {
                                     // 3b. Periodic X click — does NOT reset lastProgressTime
+                                    // IMPORTANT: matches extension logic — if X was clicked this tick,
+                                    // skip the gear tap (they are mutually exclusive per tick).
                                     val closeIntervalMs = config.closeIntervalSec * 1000L
+                                    var didClose = false
                                     if (now - lastCloseTap >= closeIntervalMs && smokeSince == 0L) {
                                         lastCloseTap = now
-                                        val closePt = PointF(0.935f, 0.756f)
+                                        didClose = true
+                                        val closePt = PointF(0.955f, 0.720f)
                                         safeTap(closePt, "Close (X)")
                                         FloatingOverlayService.instance?.updateStatus("Tapped Close (X)")
                                         delay(800)
                                     }
 
                                     // 3c. Smoke / Lamp Gear Linger Check
-                                    if (cloudPresent) {
+                                    // Only runs if X click did NOT fire this tick (matches extension's !did guard)
+                                    if (!didClose && cloudPresent) {
                                         smokeMiss = 0
                                         if (smokeSince == 0L) {
                                             smokeSince = now
@@ -282,19 +287,20 @@ class ScreenCaptureService : Service() {
 
                                         val lingeredSec = (now - smokeSince) / 1000
 
-                                        if (lingeredSec >= config.smokeLingerSec && (now - lastGearTap >= 6000L)) {
+                                        // Cooldown 8s between gear taps (matches extension tapGearCooldownSec=8)
+                                        if (lingeredSec >= config.smokeLingerSec && (now - lastGearTap >= 8000L)) {
                                             lastGearTap = now
                                             lastProgressTime = now  // Real tap -> reset idle timer
                                             smokeSince = 0L
                                             config.points["gear"]?.let { safeTap(it, "Lamp Gear") }
                                             FloatingOverlayService.instance?.updateStatus("Tapped gear (${config.smokeLingerSec}s)")
                                             sleepDelay = 1200L
-                                        } else {
+                                        } else if (!didClose) {
                                             FloatingOverlayService.instance?.updateStatus("Gear floating: ${lingeredSec}s / ${config.smokeLingerSec}s")
                                         }
-                                    } else {
+                                    } else if (!didClose) {
                                         // Cloud gone / not present
-                                        if (++smokeMiss >= 2) {
+                                        if (++smokeMiss >= 3) {  // tolerate short dips (matches extension smokeMiss>=3)
                                             if (smokeSince != 0L) {
                                                 Log.i(TAG, "Cloud gone before ${config.smokeLingerSec}s (auto-sold). Resetting smoke timer.")
                                             }
