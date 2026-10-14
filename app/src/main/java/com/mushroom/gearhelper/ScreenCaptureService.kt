@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
 import android.graphics.PixelFormat
+import android.graphics.PointF
 import android.graphics.Rect
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
@@ -44,6 +45,9 @@ class ScreenCaptureService : Service() {
     private var imageReader: ImageReader? = null
     private var scanJob: Job? = null
     private val serviceScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+
+    private var screenWidth: Int = 1080
+    private var screenHeight: Int = 1920
 
     var config = HelperConfig()
 
@@ -122,21 +126,28 @@ class ScreenCaptureService : Service() {
             @Suppress("DEPRECATION")
             wm.defaultDisplay.getRealMetrics(metrics)
 
-            val width = metrics.widthPixels
-            val height = metrics.heightPixels
+            screenWidth = metrics.widthPixels
+            screenHeight = metrics.heightPixels
             val density = metrics.densityDpi
 
-            imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
+            imageReader = ImageReader.newInstance(screenWidth, screenHeight, PixelFormat.RGBA_8888, 2)
             virtualDisplay = mediaProjection?.createVirtualDisplay(
                 "ScreenCapture",
-                width, height, density,
+                screenWidth, screenHeight, density,
                 DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
                 imageReader?.surface, null, null
             )
-            Log.i(TAG, "Virtual display setup for ${width}x${height}")
+            Log.i(TAG, "Virtual display setup for ${screenWidth}x${screenHeight}")
         } catch (e: Exception) {
             Log.e(TAG, "Error in setupVirtualDisplay: ${e.message}", e)
         }
+    }
+
+    private fun safeTap(point: PointF, label: String = "") {
+        val targetX = (point.x * screenWidth).coerceIn(10f, screenWidth - 20f)
+        val targetY = (point.y * screenHeight).coerceIn(10f, screenHeight - 20f)
+        Log.i(TAG, "Tapping $label at ($targetX, $targetY) [Screen: ${screenWidth}x${screenHeight}]")
+        GearAccessibilityService.instance?.tapAt(targetX, targetY)
     }
 
     fun startScanning() {
@@ -149,6 +160,7 @@ class ScreenCaptureService : Service() {
             var smokeMiss = 0
             var lastGearTap = 0L
             var lastCloseTap = System.currentTimeMillis()
+            var lastProgressTime = System.currentTimeMillis()
             var confirmAllowed = false
 
             while (isActive) {
@@ -174,29 +186,25 @@ class ScreenCaptureService : Service() {
 
                         // 1. Check Confirmation Dialog ("All attributes greater... continue selling?")
                         if (DecisionLogic.isDialog(metricsMap, config)) {
+                            lastProgressTime = now
                             smokeSince = 0L
                             smokeMiss = 0
                             sleepDelay = config.postActionDelayMs
                             if (confirmAllowed) {
                                 FloatingOverlayService.instance?.updateStatus("Confirming Sale")
-                                val pt = config.points["confirm"]
-                                if (pt != null) {
-                                    GearAccessibilityService.instance?.tapAt(pt.x * w, pt.y * h)
-                                }
+                                config.points["confirm"]?.let { safeTap(it, "Confirm") }
                                 confirmAllowed = false
                             } else {
                                 FloatingOverlayService.instance?.updateStatus("Dialog: Cancelling to re-check")
-                                val pt = config.points["cancel"]
-                                if (pt != null) {
-                                    GearAccessibilityService.instance?.tapAt(pt.x * w, pt.y * h)
-                                    confirmAllowed = true
-                                }
+                                config.points["cancel"]?.let { safeTap(it, "Cancel") }
+                                confirmAllowed = true
                             }
                         } else {
                             val popupReading = DecisionLogic.readPopup(metricsMap, config)
 
                             // 2. Gear Comparison Popup Visible -> Sell / Equip
                             if (popupReading.popup) {
+                                lastProgressTime = now
                                 smokeSince = 0L
                                 smokeMiss = 0
                                 sleepDelay = config.scanPopupMs
@@ -214,8 +222,7 @@ class ScreenCaptureService : Service() {
                                     if (retries <= 3) {
                                         val pt = config.points[decision.action]
                                         if (pt != null) {
-                                            Log.i(TAG, "Tapping ${decision.action} at (${pt.x * w}, ${pt.y * h})")
-                                            GearAccessibilityService.instance?.tapAt(pt.x * w, pt.y * h)
+                                            safeTap(pt, decision.action)
                                             lastAction = decision.action
                                             sleepDelay = config.postActionDelayMs
                                         }
@@ -226,58 +233,75 @@ class ScreenCaptureService : Service() {
                                     FloatingOverlayService.instance?.updateStatus("Paused: Unreadable gear")
                                 }
                             } else {
-                                // 3. No Popup Open -> Idle / Lamp Smoke Linger / Dynamic X-Click
+                                // 3. No Popup Open -> Idle / Lamp Smoke Linger / Dynamic X-Click / 1-Min Auto Watchdog
                                 lastAction = ""
                                 retries = 0
 
-                                // 3a. Periodic close spot (X) click (Customizable seconds, only when idle)
-                                val closeIntervalMs = config.closeIntervalSec * 1000L
-                                if (now - lastCloseTap >= closeIntervalMs && smokeSince == 0L) {
-                                    lastCloseTap = now
-                                    val closePt = config.points["close"]
-                                    if (closePt != null) {
-                                        Log.i(TAG, "${config.closeIntervalSec}s Periodic Close (X) tap at (${closePt.x * w}, ${closePt.y * h})")
-                                        GearAccessibilityService.instance?.tapAt(closePt.x * w, closePt.y * h)
+                                // 3a. Watchdog Check: If no gear/popup for 1 min+, auto-turn on Auto!
+                                val watchdogMs = config.autoWatchdogSec * 1000L
+                                val idleMs = now - lastProgressTime
+                                if (config.autoWatchdogEnabled && idleMs >= watchdogMs && smokeSince == 0L) {
+                                    lastProgressTime = now
+                                    FloatingOverlayService.instance?.updateStatus("Watchdog: Restarting Auto...")
+                                    Log.i(TAG, "Watchdog triggered: Idle for ${idleMs / 1000}s. Tapping Auto -> Start...")
+
+                                    // Step 1: Tap Auto button next to lamp
+                                    config.points["autoButton"]?.let { safeTap(it, "Auto Button") }
+                                    delay(900)
+
+                                    // Step 2: Tap green Start button inside Auto-Use dialog
+                                    config.points["autoStart"]?.let { safeTap(it, "Auto Start") }
+                                    FloatingOverlayService.instance?.updateStatus("Watchdog: Auto Turned ON!")
+                                    delay(1000)
+                                } else {
+                                    // 3b. Periodic close spot (X) click (Customizable seconds, only when idle)
+                                    val closeIntervalMs = config.closeIntervalSec * 1000L
+                                    if (now - lastCloseTap >= closeIntervalMs && smokeSince == 0L) {
+                                        lastCloseTap = now
+                                        // Tap close spot slightly inset from edge (0.935f) to prevent Android edge gesture swallowing
+                                        val closePt = PointF(0.935f, 0.756f)
+                                        safeTap(closePt, "Close (X)")
                                         FloatingOverlayService.instance?.updateStatus("Tapped Close (X)")
-                                    }
-                                }
-
-                                // 3b. Smoke / Lamp Gear Linger Check:
-                                val smokeFrac = metricsMap["smoke"]?.smoke ?: 0f
-                                val cloudPresent = smokeFrac >= 0.10f
-
-                                if (cloudPresent) {
-                                    smokeMiss = 0
-                                    if (smokeSince == 0L) {
-                                        smokeSince = now
-                                        Log.i(TAG, "Genie released gear: Cloud detected (${smokeFrac * 100}%), starting ${config.smokeLingerSec}s timer...")
+                                        delay(800) // Pause so user sees the status
                                     }
 
-                                    val lingeredSec = (now - smokeSince) / 1000
+                                    // 3c. Smoke / Lamp Gear Linger Check:
+                                    val smokeFrac = metricsMap["smoke"]?.smoke ?: 0f
+                                    val cloudPresent = smokeFrac >= 0.10f
 
-                                    // Check against user's configured hover duration
-                                    if (lingeredSec >= config.smokeLingerSec && (now - lastGearTap >= 6000L)) {
-                                        lastGearTap = now
-                                        smokeSince = 0L
-                                        val gearPt = config.points["gear"]
-                                        if (gearPt != null) {
-                                            Log.i(TAG, "Gear lingered ${lingeredSec}s -> Tapping gear at (${gearPt.x * w}, ${gearPt.y * h})")
-                                            GearAccessibilityService.instance?.tapAt(gearPt.x * w, gearPt.y * h)
+                                    if (cloudPresent) {
+                                        lastProgressTime = now
+                                        smokeMiss = 0
+                                        if (smokeSince == 0L) {
+                                            smokeSince = now
+                                            Log.i(TAG, "Genie released gear: Cloud detected (${smokeFrac * 100}%), starting ${config.smokeLingerSec}s timer...")
+                                        }
+
+                                        val lingeredSec = (now - smokeSince) / 1000
+
+                                        if (lingeredSec >= config.smokeLingerSec && (now - lastGearTap >= 6000L)) {
+                                            lastGearTap = now
+                                            smokeSince = 0L
+                                            config.points["gear"]?.let { safeTap(it, "Lamp Gear") }
                                             FloatingOverlayService.instance?.updateStatus("Tapped gear (${config.smokeLingerSec}s)")
                                             sleepDelay = 1200L
+                                        } else {
+                                            FloatingOverlayService.instance?.updateStatus("Gear floating: ${lingeredSec}s / ${config.smokeLingerSec}s")
                                         }
                                     } else {
-                                        FloatingOverlayService.instance?.updateStatus("Gear floating: ${lingeredSec}s / ${config.smokeLingerSec}s")
-                                    }
-                                } else {
-                                    // If cloud vanishes (auto-sold), reset timer after 2 empty scans
-                                    if (++smokeMiss >= 2) {
-                                        if (smokeSince != 0L) {
-                                            Log.i(TAG, "Cloud disappeared before ${config.smokeLingerSec}s (Auto-sold). Resetting timer.")
+                                        if (++smokeMiss >= 2) {
+                                            if (smokeSince != 0L) {
+                                                Log.i(TAG, "Cloud disappeared before ${config.smokeLingerSec}s (Auto-sold). Resetting timer.")
+                                            }
+                                            smokeSince = 0L
                                         }
-                                        smokeSince = 0L
+                                        val idleSec = (now - lastProgressTime) / 1000
+                                        if (config.autoWatchdogEnabled && idleSec >= 20) {
+                                            FloatingOverlayService.instance?.updateStatus("Watching (${idleSec}s/${config.autoWatchdogSec}s)")
+                                        } else {
+                                            FloatingOverlayService.instance?.updateStatus("Watching for gear…")
+                                        }
                                     }
-                                    FloatingOverlayService.instance?.updateStatus("Watching for gear…")
                                 }
                             }
                         }
@@ -315,6 +339,13 @@ class ScreenCaptureService : Service() {
                 Bitmap.Config.ARGB_8888
             )
             bitmap.copyPixelsFromBuffer(buffer)
+
+            // Crop out rowPadding so bitmap width exactly matches screen width
+            if (rowPadding != 0) {
+                val cropped = Bitmap.createBitmap(bitmap, 0, 0, image.width, image.height)
+                bitmap.recycle()
+                return cropped
+            }
             return bitmap
         } catch (e: Exception) {
             Log.e(TAG, "Error acquiring frame: ${e.message}")

@@ -15,9 +15,11 @@ data class Thresholds(
 )
 
 data class HelperConfig(
-    var conflictMode: String = "stats", // "stats", "power", "pause"
-    var smokeLingerSec: Int = 5,        // seconds gear must linger before tapping
-    var closeIntervalSec: Int = 30,     // seconds interval between X clicks
+    var conflictMode: String = "stats",      // "stats", "power", "pause"
+    var smokeLingerSec: Int = 5,             // seconds gear must linger before tapping
+    var closeIntervalSec: Int = 30,          // seconds interval between X clicks
+    var autoWatchdogEnabled: Boolean = true, // auto-restart if no gear for 1 min
+    var autoWatchdogSec: Int = 60,          // idle seconds before restarting auto
     var scanIdleMs: Long = 1200L,
     var scanPopupMs: Long = 700L,
     var postActionDelayMs: Long = 1300L,
@@ -29,7 +31,9 @@ data class HelperConfig(
         "close" to PointF(0.966f, 0.756f),
         "gear" to PointF(0.514f, 0.609f),
         "confirm" to PointF(0.312f, 0.579f),
-        "cancel" to PointF(0.685f, 0.577f)
+        "cancel" to PointF(0.685f, 0.577f),
+        "autoButton" to PointF(0.790f, 0.760f), // Auto gear button next to lamp
+        "autoStart" to PointF(0.502f, 0.608f)   // Start button inside Auto-Use popup
     ),
     val regions: Map<String, RectF> = mapOf(
         "sell" to RectF(0.231f, 0.814f, 0.427f, 0.839f),

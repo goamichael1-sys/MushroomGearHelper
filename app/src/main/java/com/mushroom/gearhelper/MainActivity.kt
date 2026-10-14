@@ -24,6 +24,7 @@ class MainActivity : AppCompatActivity() {
         private const val KEY_SMOKE_LINGER = "smoke_linger_sec"
         private const val KEY_CLOSE_INTERVAL = "close_interval_sec"
         private const val KEY_CONFLICT_MODE = "conflict_mode"
+        private const val KEY_WATCHDOG_ENABLED = "watchdog_enabled"
     }
 
     private lateinit var binding: ActivityMainBinding
@@ -59,16 +60,20 @@ class MainActivity : AppCompatActivity() {
         val savedSmokeLinger = prefs.getInt(KEY_SMOKE_LINGER, 5)
         val savedCloseInterval = prefs.getInt(KEY_CLOSE_INTERVAL, 30)
         val savedConflictMode = prefs.getString(KEY_CONFLICT_MODE, "stats") ?: "stats"
+        val savedWatchdog = prefs.getBoolean(KEY_WATCHDOG_ENABLED, true)
 
         config.smokeLingerSec = savedSmokeLinger
         config.closeIntervalSec = savedCloseInterval
         config.conflictMode = savedConflictMode
+        config.autoWatchdogEnabled = savedWatchdog
 
         binding.sliderSmokeLinger.value = savedSmokeLinger.toFloat().coerceIn(2f, 15f)
         binding.tvSmokeLingerLabel.text = "Smoke Hover Duration: ${savedSmokeLinger}s"
 
         binding.sliderCloseInterval.value = savedCloseInterval.toFloat().coerceIn(10f, 120f)
         binding.tvCloseIntervalLabel.text = "Close (X) Click Interval: ${savedCloseInterval}s"
+
+        binding.switchWatchdog.isChecked = savedWatchdog
 
         when (savedConflictMode) {
             "power" -> binding.radioPower.isChecked = true
@@ -102,7 +107,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Smoke Linger Slider
         binding.sliderSmokeLinger.addOnChangeListener { _, value, fromUser ->
             if (fromUser) {
                 val sec = value.toInt()
@@ -113,7 +117,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Close (X) Interval Slider
         binding.sliderCloseInterval.addOnChangeListener { _, value, fromUser ->
             if (fromUser) {
                 val sec = value.toInt()
@@ -124,7 +127,12 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Conflict Radio Group
+        binding.switchWatchdog.setOnCheckedChangeListener { _, isChecked ->
+            config.autoWatchdogEnabled = isChecked
+            prefs.edit().putBoolean(KEY_WATCHDOG_ENABLED, isChecked).apply()
+            ScreenCaptureService.instance?.config?.autoWatchdogEnabled = isChecked
+        }
+
         binding.radioGroupConflict.setOnCheckedChangeListener { _, checkedId ->
             val mode = when (checkedId) {
                 R.id.radioPower -> "power"
@@ -191,10 +199,10 @@ class MainActivity : AppCompatActivity() {
                 startService(captureIntent)
             }
 
-            // Sync current config into service
             ScreenCaptureService.instance?.config?.let {
                 it.smokeLingerSec = config.smokeLingerSec
                 it.closeIntervalSec = config.closeIntervalSec
+                it.autoWatchdogEnabled = config.autoWatchdogEnabled
                 it.conflictMode = config.conflictMode
             }
 

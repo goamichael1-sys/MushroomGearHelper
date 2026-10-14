@@ -169,6 +169,23 @@
                 android:stepSize="5.0"
                 android:value="30.0" />
 
+            <!-- 1-Min Auto Watchdog Switch -->
+            <com.google.android.material.switchmaterial.SwitchMaterial
+                android:id="@+id/switchWatchdog"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:checked="true"
+                android:text="Auto-Restart if Idle (Watchdog)"
+                android:textColor="@color/text_primary" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="If idle for 1 min with no gears, automatically turns Auto back ON."
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp" />
+
         </LinearLayout>
 
         <!-- Decision Settings Card -->
