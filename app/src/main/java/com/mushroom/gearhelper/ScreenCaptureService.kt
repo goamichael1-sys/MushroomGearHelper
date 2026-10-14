@@ -230,8 +230,8 @@ class ScreenCaptureService : Service() {
                                 lastAction = ""
                                 retries = 0
 
-                                // 3a. Periodic close spot (X) click every 30 seconds
-                                if (now - lastCloseTap >= 30000L) {
+                                // 3a. Periodic close spot (X) click every 30 seconds (ONLY when completely idle)
+                                if (now - lastCloseTap >= 30000L && smokeSince == 0L) {
                                     lastCloseTap = now
                                     val closePt = config.points["close"]
                                     if (closePt != null) {
@@ -242,18 +242,21 @@ class ScreenCaptureService : Service() {
                                 }
 
                                 // 3b. Smoke / Lamp Gear Linger Check:
-                                // ONLY click if the gear has NOT been auto-sold and lingered for 5s+!
+                                // Real cloud coverage must be at least 10%
                                 val smokeFrac = metricsMap["smoke"]?.smoke ?: 0f
-                                val smokePresent = smokeFrac >= 0.04f
+                                val cloudPresent = smokeFrac >= 0.10f
 
-                                if (smokePresent) {
+                                if (cloudPresent) {
                                     smokeMiss = 0
+                                    // Start the timer when the cloud first appears!
                                     if (smokeSince == 0L) {
                                         smokeSince = now
+                                        Log.i(TAG, "Genie released gear: Cloud detected (${smokeFrac * 100}%), starting 5s timer...")
                                     }
+
                                     val lingeredSec = (now - smokeSince) / 1000
 
-                                    // Linger 5s+ before tapping gear
+                                    // If gear stays for 5s+ without being auto-sold by the game:
                                     if (lingeredSec >= 5 && (now - lastGearTap >= 6000L)) {
                                         lastGearTap = now
                                         smokeSince = 0L
@@ -265,11 +268,14 @@ class ScreenCaptureService : Service() {
                                             sleepDelay = 1200L
                                         }
                                     } else {
-                                        FloatingOverlayService.instance?.updateStatus("Smoke lingering: ${lingeredSec}s / 5s")
+                                        FloatingOverlayService.instance?.updateStatus("Gear floating: ${lingeredSec}s / 5s")
                                     }
                                 } else {
-                                    // If smoke is absent for 3 consecutive checks (meaning game auto-sold it), reset counter
-                                    if (++smokeMiss >= 3) {
+                                    // If cloud vanishes (auto-sold by game), reset timer after 2 empty scans
+                                    if (++smokeMiss >= 2) {
+                                        if (smokeSince != 0L) {
+                                            Log.i(TAG, "Cloud disappeared before 5s (Gear was auto-sold). Timer reset, no click.")
+                                        }
                                         smokeSince = 0L
                                     }
                                     FloatingOverlayService.instance?.updateStatus("Watching for gear…")

@@ -71,13 +71,14 @@ object DecisionLogic {
             if ((hh <= 14f || hh >= 346f) && s >= 0.55f && v >= 0.55f) redCount++
             if (hh in 70f..160f && s >= 0.5f && v >= 0.45f) greenCount++
 
-            // Smoke & Gear Sparkle detection (Supports Blue, Purple, Gold, Red clouds & sparkles!)
-            val isSmokeOrSparkle = (v >= 0.70f && s in 0.08f..0.70f && hh in 160f..235f) || // Blue/Cyan cloud
-                                   (v >= 0.40f && s >= 0.15f && hh in 240f..330f) ||        // Purple/Magenta cloud (Epic/Legendary)
-                                   (v >= 0.65f && s >= 0.30f && hh in 35f..68f) ||          // Gold/Yellow sparkles & cloud
-                                   (v >= 0.50f && s >= 0.35f && (hh <= 25f || hh >= 335f))  // Red/Orange cloud
+            // Cloud & Sparkles detection: MUST be high brightness (v >= 0.75) and pastel (s <= 0.60)
+            // This strictly ignores dark/saturated inventory items and only triggers when a real cloud appears!
+            val isCloudOrSparkle = (v >= 0.75f && s in 0.08f..0.55f && hh in 160f..235f) || // Blue/Cyan pastel cloud
+                                   (v >= 0.75f && s in 0.12f..0.60f && hh in 240f..320f) || // Purple/Magenta pastel cloud (Epic)
+                                   (v >= 0.85f && s in 0.10f..0.65f && hh in 35f..68f)   || // Gold/Yellow sparkles
+                                   (v >= 0.75f && s in 0.15f..0.60f && (hh <= 20f || hh >= 340f)) // Red/Orange pastel cloud
 
-            if (isSmokeOrSparkle) smokeCount++
+            if (isCloudOrSparkle) smokeCount++
         }
 
         val total = (width * height).toFloat()
