@@ -56,6 +56,20 @@ class ScreenCaptureService : Service() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        loadConfigFromPrefs()
+    }
+
+    fun loadConfigFromPrefs() {
+        try {
+            val prefs = getSharedPreferences("MushroomPrefs", Context.MODE_PRIVATE)
+            config.smokeLingerSec = prefs.getInt("smoke_linger_sec", 5)
+            config.closeIntervalSec = prefs.getInt("close_interval_sec", 30)
+            config.conflictMode = prefs.getString("conflict_mode", "stats") ?: "stats"
+            config.autoWatchdogEnabled = prefs.getBoolean("watchdog_enabled", true)
+            Log.i(TAG, "Loaded config: watchdog=${config.autoWatchdogEnabled}, close=${config.closeIntervalSec}s, smokeLinger=${config.smokeLingerSec}s")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error loading prefs: ${e.message}")
+        }
     }
 
     private fun startForegroundNotification() {
@@ -151,6 +165,7 @@ class ScreenCaptureService : Service() {
     }
 
     fun startScanning() {
+        loadConfigFromPrefs()
         scanJob?.cancel()
         scanJob = serviceScope.launch {
             Log.i(TAG, "Starting gear scan loop...")
@@ -165,6 +180,9 @@ class ScreenCaptureService : Service() {
             // → If no sell/equip for 60s, watchdog fires and restarts Auto.
             var lastProgressTime = System.currentTimeMillis()
             var confirmAllowed = false
+            // smokeStreak: cloud must be confirmed in 2+ consecutive scans before linger timer starts.
+            // Prevents single-frame ambient lamp animation from triggering the gear tap.
+            var smokeStreak = 0
 
             while (isActive) {
                 var sleepDelay = config.scanIdleMs
@@ -252,6 +270,7 @@ class ScreenCaptureService : Service() {
                                     // Reset timer first so we don't spam taps every loop
                                     lastProgressTime = now
                                     smokeSince = 0L  // Cancel stale smoke timer
+                                    smokeStreak = 0
                                     FloatingOverlayService.instance?.updateStatus("Watchdog: Restarting Auto...")
                                     Log.i(TAG, "Watchdog triggered: ${idleMs / 1000}s idle >= ${config.autoWatchdogSec}s. Tapping Auto -> Start...")
 
@@ -282,29 +301,37 @@ class ScreenCaptureService : Service() {
                                     // Only runs if X click did NOT fire this tick (matches extension's !did guard)
                                     if (!didClose && cloudPresent) {
                                         smokeMiss = 0
-                                        if (smokeSince == 0L) {
+                                        smokeStreak++
+
+                                        // CONFIRMATION: cloud must be present in 2+ consecutive scans
+                                        // before we start the linger timer. This filters out single-frame
+                                        // ambient lamp animation false positives.
+                                        if (smokeStreak >= 2 && smokeSince == 0L) {
                                             smokeSince = now
-                                            Log.i(TAG, "Genie released gear: Cloud ${smokeFrac * 100}%, starting ${config.smokeLingerSec}s timer...")
+                                            Log.i(TAG, "Gear confirmed! Cloud ${smokeFrac * 100}% for ${smokeStreak} scans. Starting ${config.smokeLingerSec}s linger timer...")
                                         }
 
-                                        val lingeredSec = (now - smokeSince) / 1000
+                                        if (smokeSince != 0L) {
+                                            val lingeredSec = (now - smokeSince) / 1000
 
-                                        // Cooldown 8s between gear taps (matches extension tapGearCooldownSec=8)
-                                        if (lingeredSec >= config.smokeLingerSec && (now - lastGearTap >= 8000L)) {
-                                            lastGearTap = now
-                                            // NOTE: do NOT reset lastProgressTime here.
-                                            // If this was a false-positive smoke (idle lamp animation), the watchdog
-                                            // must keep counting. If it was real, the subsequent Sell/Equip tap will
-                                            // reset lastProgressTime at that point.
-                                            smokeSince = 0L
-                                            config.points["gear"]?.let { safeTap(it, "Lamp Gear") }
-                                            FloatingOverlayService.instance?.updateStatus("Tapped gear (${config.smokeLingerSec}s)")
-                                            sleepDelay = 1200L
-                                        } else if (!didClose) {
-                                            FloatingOverlayService.instance?.updateStatus("Gear floating: ${lingeredSec}s / ${config.smokeLingerSec}s")
+                                            // Cooldown 8s between gear taps (matches extension tapGearCooldownSec=8)
+                                            if (lingeredSec >= config.smokeLingerSec && (now - lastGearTap >= 8000L)) {
+                                                lastGearTap = now
+                                                smokeStreak = 0
+                                                smokeSince = 0L
+                                                config.points["gear"]?.let { safeTap(it, "Lamp Gear") }
+                                                FloatingOverlayService.instance?.updateStatus("Tapped gear (${config.smokeLingerSec}s)")
+                                                sleepDelay = 1200L
+                                            } else {
+                                                FloatingOverlayService.instance?.updateStatus("Gear floating: ${lingeredSec}s / ${config.smokeLingerSec}s")
+                                            }
+                                        } else {
+                                            // Streak < 2: waiting for confirmation
+                                            FloatingOverlayService.instance?.updateStatus("Cloud seen (${smokeStreak}/2)...")
                                         }
                                     } else if (!didClose) {
-                                        // Cloud gone / not present
+                                        // Cloud gone / not present — reset streak immediately
+                                        smokeStreak = 0
                                         if (++smokeMiss >= 3) {  // tolerate short dips (matches extension smokeMiss>=3)
                                             if (smokeSince != 0L) {
                                                 Log.i(TAG, "Cloud gone before ${config.smokeLingerSec}s (auto-sold). Resetting smoke timer.")

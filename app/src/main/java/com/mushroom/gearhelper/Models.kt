@@ -29,11 +29,11 @@ data class HelperConfig(
         "sell" to PointF(0.327f, 0.826f),
         "equip" to PointF(0.670f, 0.826f),
         "close" to PointF(0.966f, 0.756f),
-        "gear" to PointF(0.514f, 0.609f),
+        "gear" to PointF(0.466f, 0.584f),       // Center of floating gear item
         "confirm" to PointF(0.312f, 0.579f),
         "cancel" to PointF(0.685f, 0.577f),
-        "autoButton" to PointF(0.879f, 0.850f), // Auto button in bottom resource bar (confirmed from screenshot)
-        "autoStart" to PointF(0.502f, 0.606f)   // Start button inside Auto-Use popup
+        "autoButton" to PointF(0.808f, 0.792f), // Auto gear button in bottom resource bar
+        "autoStart" to PointF(0.508f, 0.638f)   // Start button inside Auto-Use popup
     ),
     val regions: Map<String, RectF> = mapOf(
         "sell" to RectF(0.231f, 0.814f, 0.427f, 0.839f),
