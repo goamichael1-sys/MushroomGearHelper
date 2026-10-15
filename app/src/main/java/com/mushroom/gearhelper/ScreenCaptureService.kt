@@ -267,6 +267,7 @@ class ScreenCaptureService : Service() {
                                 retries = 0
 
                                 val smokeFrac = metricsMap["smoke"]?.smoke ?: 0f
+                                val smokePct = "%.1f".format(smokeFrac * 100)
                                 val cloudPresent = smokeFrac >= 0.10f
                                 val idleMs = now - lastProgressTime
 
@@ -343,7 +344,7 @@ class ScreenCaptureService : Service() {
                                         // ambient lamp animation false positives.
                                         if (smokeStreak >= 2 && smokeSince == 0L) {
                                             smokeSince = now
-                                            Log.i(TAG, "Gear confirmed! Cloud ${"%.1f".format(smokeFrac * 100)}% for ${smokeStreak} scans. Starting ${config.smokeLingerSec}s linger timer...")
+                                            Log.i(TAG, "Gear confirmed! Cloud ${smokePct}% for ${smokeStreak} scans. Starting ${config.smokeLingerSec}s linger timer...")
                                         }
 
                                         if (smokeSince != 0L) {
@@ -364,11 +365,11 @@ class ScreenCaptureService : Service() {
                                                 FloatingOverlayService.instance?.updateStatus("Tapped gear (${config.smokeLingerSec}s)")
                                                 sleepDelay = 1200L
                                             } else {
-                                                FloatingOverlayService.instance?.updateStatus("Gear floating: ${lingeredSec}s / ${config.smokeLingerSec}s")
+                                                FloatingOverlayService.instance?.updateStatus("Gear floating: ${lingeredSec}s / ${config.smokeLingerSec}s  [${smokePct}%]")
                                             }
                                         } else {
                                             // Streak < 2: waiting for confirmation
-                                            FloatingOverlayService.instance?.updateStatus("Cloud seen (${smokeStreak}/2)...")
+                                            FloatingOverlayService.instance?.updateStatus("Cloud seen (${smokeStreak}/2) [${smokePct}%]")
                                         }
                                     } else if (!didClose) {
                                         // Cloud gone / not present
@@ -380,15 +381,17 @@ class ScreenCaptureService : Service() {
                                         }
 
                                         smokeStreak = 0
-                                        if (++smokeMiss >= 3) {  // tolerate short dips (matches extension smokeMiss>=3)
+                                        // Miss tolerance: 3 misses (~3.6s) before resetting the linger timer.
+                                        // Tolerates short animation dips, but promptly clears stale timers if a gear was auto-sold.
+                                        if (++smokeMiss >= 3) {
                                             smokeSince = 0L
                                         }
                                         // Always show watchdog countdown when watchdog is ON
                                         if (config.autoWatchdogEnabled) {
                                             val idleSec = idleMs / 1000
-                                            FloatingOverlayService.instance?.updateStatus("Idle ${idleSec}s / ${config.autoWatchdogSec}s")
+                                            FloatingOverlayService.instance?.updateStatus("Idle ${idleSec}s / ${config.autoWatchdogSec}s  [${smokePct}%]")
                                         } else {
-                                            FloatingOverlayService.instance?.updateStatus("Watching for gear...")
+                                            FloatingOverlayService.instance?.updateStatus("Watching for gear... [${smokePct}%]")
                                         }
                                     }
                                 }

@@ -41,31 +41,45 @@ object DecisionLogic {
      * Determines whether an HSV pixel belongs to a gear cloud/smoke matching or exceeding
      * the selected minimum quality tier (0..10):
      *
-     *   - Cyan / Blue cloud = "Well" gear (and lower).
-     *     When user sets "Rare and above", "Mythic and above", "Epic and above", etc. (minQualityIndex >= 3),
-     *     Cyan clouds are filtered out (coverage drops from 41.4% to 7.0% < 10% threshold).
-     *     This allows the game's Auto-Use to auto-sell lower quality gears without the app clicking the lamp.
+     *   0 = Normal, 1 = Unique (Green), 2 = Well (Blue), 3 = Rare (Purple),
+     *   4 = Mythic (Gold), 5 = Epic (Orange), 6 = Legendary (Red), 7 = Immortal (Pink),
+     *   8 = Supreme (Cyan), 9 = Aurous (Amber), 10 = Eternal (Magenta)
      *
-     *   - Purple cosmic cloud = "Rare", "Mythic", "Epic", "Legendary", and all higher gears.
-     *     Always enabled (46.6% coverage > 10% threshold) so all higher-tier gears are reliably detected and clicked!
-     *
-     *   - On idle screen (no cloud): ~4.9% - 6.3% (below 10% threshold -> timer stops when idle).
+     * When user sets e.g. "Epic and above" (index 5):
+     *   - Well (Blue), Rare (Purple), and Mythic (Gold) are filtered out (< 2% coverage < 10% threshold),
+     *     allowing the game to auto-sell lower quality gears without the app clicking the lamp!
+     *   - Epic (Orange), Legendary (Red), and Immortal (Pink) are actively detected (~40%+ coverage)
+     *     so high-tier gears are reliably detected and clicked!
      */
     fun isCloudPixel(hh: Float, s: Float, v: Float, minQualityIndex: Int = 0): Boolean {
-        // Cyan / Blue cloud (Well gear) — disabled if user selects Rare+, Mythic+, Epic+, etc. (index >= 3)
-        // Drops Cyan cloud from 41.4% to 7.0% (< 10% threshold), letting the game auto-sell Well gears
-        // without false taps on the empty lamp.
+        // 1. Unique (Green glow/cloud): active when minQualityIndex <= 1
+        val isGreen = (minQualityIndex <= 1) && (v >= 0.80f && s >= 0.40f && hh in 75f..155f)
+
+        // 2. Well (Cyan / Blue cloud): active when minQualityIndex <= 2
         val isCyan = (minQualityIndex <= 2) && (v >= 0.82f && s in 0.08f..0.55f && hh in 165f..225f)
 
-        // Purple cloud — in Legend of Mushroom, ALL high-tier gears (Rare, Mythic, Epic, Legendary, etc.)
-        // spawn in this purple cosmic cloud (46.6% coverage). It must remain enabled across all higher
-        // quality settings so Mythic, Epic, and Legendary gears are reliably detected and clicked!
-        val isPurple = (v >= 0.70f && s in 0.15f..0.70f && hh in 245f..320f)
+        // 3. Rare (Purple cosmic cloud): active when minQualityIndex <= 3
+        val isPurple = (minQualityIndex <= 3) && (v >= 0.70f && s in 0.15f..0.70f && hh in 245f..305f)
 
-        // Gold / Yellow sparkles & highlights
-        val isGold = (v >= 0.90f && s in 0.18f..0.65f && hh in 38f..65f)
+        // 4. Mythic (Gold / Yellow glow): active when minQualityIndex <= 4
+        val isGold = (minQualityIndex <= 4) && (v >= 0.90f && s in 0.45f..0.85f && hh in 42f..62f)
 
-        return isCyan || isPurple || isGold
+        // 5. Epic (Orange glow/cloud): active when minQualityIndex <= 5
+        val isOrange = (minQualityIndex <= 5) && (v >= 0.88f && s >= 0.50f && hh in 16f..38f)
+
+        // 6. Legendary (Red glow/cloud): active when minQualityIndex <= 6
+        val isRed = (minQualityIndex <= 6) && (v >= 0.80f && s >= 0.55f && (hh <= 15f || hh >= 345f))
+
+        // 7. Immortal & Eternal (Pink & Magenta): active when minQualityIndex <= 7 or == 10
+        val isPink = (minQualityIndex <= 7 || minQualityIndex == 10) && (v >= 0.75f && s >= 0.40f && hh in 306f..345f)
+
+        // 8. Supreme (Light Blue): active when minQualityIndex == 8
+        val isSupreme = (minQualityIndex == 8) && (v >= 0.85f && s >= 0.25f && hh in 175f..215f)
+
+        // 9. Aurous (Amber): active when minQualityIndex == 9
+        val isAurous = (minQualityIndex == 9) && (v >= 0.88f && s >= 0.60f && hh in 25f..42f)
+
+        return isGreen || isCyan || isPurple || isGold || isOrange || isRed || isPink || isSupreme || isAurous
     }
 
     /**
