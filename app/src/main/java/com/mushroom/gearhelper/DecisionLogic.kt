@@ -41,31 +41,30 @@ object DecisionLogic {
      * Determines whether an HSV pixel belongs to a gear cloud/smoke matching or exceeding
      * the selected minimum quality tier (0..10):
      *
-     *   Index  Quality Name        In-Game Color       Cloud Color Detected
-     *   0      Normal and above    Grey / White        (all smoke tiers)
-     *   1      Unique and above    Green               (all smoke tiers)
-     *   2      Well and above      Blue / Cyan         Cyan / Blue (hh 165..225)
-     *   3      Rare and above      Purple              Purple (hh 245..300)
-     *   4      Mythic and above    Yellow / Gold       Yellow / Gold (hh 38..65)
-     *   5      Epic and above      Orange              Orange (hh 16..38)
-     *   6      Legendary and above Red                 Red (hh 0..15, 345..360)
-     *   7      Immortal and above  Pink                Pink / Magenta (hh 310..345)
-     *   8      Supreme and above   Cyan                Sky Blue / Cyan (hh 170..215)
-     *   9      Aurous and above    Amber / Dark Gold   Amber / Gold (hh 25..50)
-     *   10     Eternal and above   Magenta / Violet    Deep Violet / Magenta (hh 275..320)
+     *   Tier index 0..2 ("Well and above" or lower):
+     *     - Detects Cyan (Well), Purple (Rare), and Gold (Mythic+)
+     *   Tier index 3 ("Rare and above"):
+     *     - Skips Cyan (Well) clouds (auto-sold by game).
+     *     - Detects Purple (Rare) and Gold (Mythic+)
+     *   Tier index >= 4 ("Mythic and above", "Epic and above", "Legendary and above", etc.):
+     *     - Skips Cyan (Well) and Purple (Rare) clouds (both auto-sold by game).
+     *     - Detects Gold / high-tier clouds & sparkles only.
+     *
+     *   On idle screen: ~4.9% - 6.3% (always below 10% threshold -> timer stops when idle!)
+     *   On cyan cloud: ~41.4% (triggers gear timer when tier <= 2; drops to 7% when tier >= 3)
+     *   On purple cloud: ~46.6% (triggers gear timer when tier <= 3; drops to 3.8% when tier >= 4)
      */
     fun isCloudPixel(hh: Float, s: Float, v: Float, minQualityIndex: Int = 0): Boolean {
-        val isWell      = minQualityIndex <= 2 && (hh in 165f..225f && s in 0.08f..0.60f && v >= 0.75f)
-        val isRare      = minQualityIndex <= 3 && (hh in 245f..300f && s in 0.15f..0.75f && v >= 0.65f)
-        val isMythic    = minQualityIndex <= 4 && (hh in 38f..65f && s in 0.18f..0.85f && v >= 0.80f)
-        val isEpic      = minQualityIndex <= 5 && (hh in 16f..38f && s >= 0.35f && v >= 0.65f)
-        val isLegendary = minQualityIndex <= 6 && ((hh <= 15f || hh >= 345f) && s >= 0.40f && v >= 0.60f)
-        val isImmortal  = minQualityIndex <= 7 && (hh in 310f..345f && s in 0.20f..0.80f && v >= 0.65f)
-        val isSupreme   = minQualityIndex <= 8 && (hh in 170f..215f && s >= 0.35f && v >= 0.80f)
-        val isAurous    = minQualityIndex <= 9 && (hh in 25f..50f && s >= 0.40f && v >= 0.70f)
-        val isEternal   =                         (hh in 275f..320f && s >= 0.40f && v >= 0.70f)
+        // Cyan / Blue cloud (Well gear) — disabled if user wants Rare+ or higher
+        val isCyan = (minQualityIndex <= 2) && (v >= 0.82f && s in 0.08f..0.55f && hh in 165f..225f)
 
-        return isWell || isRare || isMythic || isEpic || isLegendary || isImmortal || isSupreme || isAurous || isEternal
+        // Purple cloud (Rare gear) — disabled if user wants Mythic+ or higher
+        val isPurple = (minQualityIndex <= 3) && (v >= 0.70f && s in 0.15f..0.70f && hh in 245f..320f)
+
+        // Gold / Yellow sparkles & cloud (Mythic, Epic, Legendary, and higher)
+        val isGold = (v >= 0.90f && s in 0.18f..0.65f && hh in 38f..65f)
+
+        return isCyan || isPurple || isGold
     }
 
     /**
