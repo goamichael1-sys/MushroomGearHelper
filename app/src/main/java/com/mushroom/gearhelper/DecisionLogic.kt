@@ -41,27 +41,28 @@ object DecisionLogic {
      * Determines whether an HSV pixel belongs to a gear cloud/smoke matching or exceeding
      * the selected minimum quality tier (0..10):
      *
-     *   Tier index 0..2 ("Well and above" or lower):
-     *     - Detects Cyan (Well), Purple (Rare), and Gold (Mythic+)
-     *   Tier index 3 ("Rare and above"):
-     *     - Skips Cyan (Well) clouds (auto-sold by game).
-     *     - Detects Purple (Rare) and Gold (Mythic+)
-     *   Tier index >= 4 ("Mythic and above", "Epic and above", "Legendary and above", etc.):
-     *     - Skips Cyan (Well) and Purple (Rare) clouds (both auto-sold by game).
-     *     - Detects Gold / high-tier clouds & sparkles only.
+     *   - Cyan / Blue cloud = "Well" gear (and lower).
+     *     When user sets "Rare and above", "Mythic and above", "Epic and above", etc. (minQualityIndex >= 3),
+     *     Cyan clouds are filtered out (coverage drops from 41.4% to 7.0% < 10% threshold).
+     *     This allows the game's Auto-Use to auto-sell lower quality gears without the app clicking the lamp.
      *
-     *   On idle screen: ~4.9% - 6.3% (always below 10% threshold -> timer stops when idle!)
-     *   On cyan cloud: ~41.4% (triggers gear timer when tier <= 2; drops to 7% when tier >= 3)
-     *   On purple cloud: ~46.6% (triggers gear timer when tier <= 3; drops to 3.8% when tier >= 4)
+     *   - Purple cosmic cloud = "Rare", "Mythic", "Epic", "Legendary", and all higher gears.
+     *     Always enabled (46.6% coverage > 10% threshold) so all higher-tier gears are reliably detected and clicked!
+     *
+     *   - On idle screen (no cloud): ~4.9% - 6.3% (below 10% threshold -> timer stops when idle).
      */
     fun isCloudPixel(hh: Float, s: Float, v: Float, minQualityIndex: Int = 0): Boolean {
-        // Cyan / Blue cloud (Well gear) — disabled if user wants Rare+ or higher
+        // Cyan / Blue cloud (Well gear) — disabled if user selects Rare+, Mythic+, Epic+, etc. (index >= 3)
+        // Drops Cyan cloud from 41.4% to 7.0% (< 10% threshold), letting the game auto-sell Well gears
+        // without false taps on the empty lamp.
         val isCyan = (minQualityIndex <= 2) && (v >= 0.82f && s in 0.08f..0.55f && hh in 165f..225f)
 
-        // Purple cloud (Rare gear) — disabled if user wants Mythic+ or higher
-        val isPurple = (minQualityIndex <= 3) && (v >= 0.70f && s in 0.15f..0.70f && hh in 245f..320f)
+        // Purple cloud — in Legend of Mushroom, ALL high-tier gears (Rare, Mythic, Epic, Legendary, etc.)
+        // spawn in this purple cosmic cloud (46.6% coverage). It must remain enabled across all higher
+        // quality settings so Mythic, Epic, and Legendary gears are reliably detected and clicked!
+        val isPurple = (v >= 0.70f && s in 0.15f..0.70f && hh in 245f..320f)
 
-        // Gold / Yellow sparkles & cloud (Mythic, Epic, Legendary, and higher)
+        // Gold / Yellow sparkles & highlights
         val isGold = (v >= 0.90f && s in 0.18f..0.65f && hh in 38f..65f)
 
         return isCyan || isPurple || isGold
