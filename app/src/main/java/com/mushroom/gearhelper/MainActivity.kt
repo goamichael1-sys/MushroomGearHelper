@@ -86,16 +86,24 @@ class MainActivity : AppCompatActivity() {
             else -> binding.radioStats.isChecked = true
         }
 
-        // Minimum Gear Quality spinner — tiers match the game's Auto-Use quality dropdown
+        // Minimum Gear Quality spinner — all options match the game's Auto-Use quality dropdown exactly
         val tierLabels = listOf(
-            "Normal and above (detect all)",
-            "Epic and above (skip Normal/Rare)",
-            "Legendary and above (gold only)"
+            "Normal and above",
+            "Unique and above",
+            "Well and above",
+            "Rare and above",
+            "Mythic and above",
+            "Epic and above",
+            "Legendary and above",
+            "Immortal and above",
+            "Supreme and above",
+            "Aurous and above",
+            "Eternal and above"
         )
         val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, tierLabels)
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         binding.spinnerMinQuality.adapter = adapter
-        binding.spinnerMinQuality.setSelection(savedMinTier.coerceIn(0, 2))
+        binding.spinnerMinQuality.setSelection(savedMinTier.coerceIn(0, 10))
     }
 
     private fun setupListeners() {

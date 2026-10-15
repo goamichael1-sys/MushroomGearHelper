@@ -205,10 +205,10 @@ class ScreenCaptureService : Service() {
                                 (reg.right * w).toInt(),
                                 (reg.bottom * h).toInt()
                             )
-                            // Pass minCloudTier only for the smoke region — other regions only use
-                            // red/green detection which is unaffected by the cloud tier filter.
-                            val tier = if (name == "smoke") config.minCloudTier else 0
-                            metricsMap[name] = DecisionLogic.analyzeRegion(bitmap, r, tier)
+                            // Pass minCloudTier (0..10 matching selected game quality) only for smoke region.
+                            // Other regions only check red/green buttons/arrows.
+                            val minQuality = if (name == "smoke") config.minCloudTier else 0
+                            metricsMap[name] = DecisionLogic.analyzeRegion(bitmap, r, minQuality)
                         }
 
                         // 1. Check Confirmation Dialog ("All attributes greater... continue selling?")

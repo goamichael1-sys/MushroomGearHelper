@@ -20,7 +20,7 @@ data class HelperConfig(
     var closeIntervalSec: Int = 30,          // seconds interval between X clicks
     var autoWatchdogEnabled: Boolean = true, // auto-restart if no gear for 1 min
     var autoWatchdogSec: Int = 60,          // idle seconds before restarting auto
-    var minCloudTier: Int = 0,              // 0=all(cyan+purple+gold), 1=epic+(purple+gold), 2=legendary+(gold only)
+    var minCloudTier: Int = 0,              // 0..10 matching selected game quality (Normal to Eternal)
     var scanIdleMs: Long = 1200L,
     var scanPopupMs: Long = 700L,
     var postActionDelayMs: Long = 1300L,
