@@ -66,7 +66,8 @@ class ScreenCaptureService : Service() {
             config.closeIntervalSec = prefs.getInt("close_interval_sec", 30)
             config.conflictMode = prefs.getString("conflict_mode", "stats") ?: "stats"
             config.autoWatchdogEnabled = prefs.getBoolean("watchdog_enabled", true)
-            Log.i(TAG, "Loaded config: watchdog=${config.autoWatchdogEnabled}, close=${config.closeIntervalSec}s, smokeLinger=${config.smokeLingerSec}s")
+            config.minCloudTier = prefs.getInt("min_cloud_tier", 0)
+            Log.i(TAG, "Loaded config: watchdog=${config.autoWatchdogEnabled}, close=${config.closeIntervalSec}s, smokeLinger=${config.smokeLingerSec}s, minCloudTier=${config.minCloudTier}")
         } catch (e: Exception) {
             Log.e(TAG, "Error loading prefs: ${e.message}")
         }
@@ -204,7 +205,10 @@ class ScreenCaptureService : Service() {
                                 (reg.right * w).toInt(),
                                 (reg.bottom * h).toInt()
                             )
-                            metricsMap[name] = DecisionLogic.analyzeRegion(bitmap, r)
+                            // Pass minCloudTier only for the smoke region — other regions only use
+                            // red/green detection which is unaffected by the cloud tier filter.
+                            val tier = if (name == "smoke") config.minCloudTier else 0
+                            metricsMap[name] = DecisionLogic.analyzeRegion(bitmap, r, tier)
                         }
 
                         // 1. Check Confirmation Dialog ("All attributes greater... continue selling?")

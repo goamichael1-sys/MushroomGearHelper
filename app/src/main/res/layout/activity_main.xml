@@ -246,6 +246,42 @@
             </RadioGroup>
         </LinearLayout>
 
+        <!-- Minimum Gear Quality Card -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Minimum Gear Quality"
+                android:textColor="@color/white"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="Match this to your game's Auto-Use quality setting. The app will ignore clouds below this tier (they will be auto-sold by the game before the linger timer expires)."
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp" />
+
+            <Spinner
+                android:id="@+id/spinnerMinQuality"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_card"
+                android:padding="4dp"
+                android:popupBackground="@drawable/bg_card" />
+
+        </LinearLayout>
+
         <!-- Big Launch Action -->
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnStartHelper"

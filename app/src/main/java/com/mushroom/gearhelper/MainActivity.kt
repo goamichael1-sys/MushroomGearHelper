@@ -10,6 +10,8 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.util.Log
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -25,6 +27,7 @@ class MainActivity : AppCompatActivity() {
         private const val KEY_CLOSE_INTERVAL = "close_interval_sec"
         private const val KEY_CONFLICT_MODE = "conflict_mode"
         private const val KEY_WATCHDOG_ENABLED = "watchdog_enabled"
+        private const val KEY_MIN_CLOUD_TIER = "min_cloud_tier"
     }
 
     private lateinit var binding: ActivityMainBinding
@@ -61,11 +64,13 @@ class MainActivity : AppCompatActivity() {
         val savedCloseInterval = prefs.getInt(KEY_CLOSE_INTERVAL, 30)
         val savedConflictMode = prefs.getString(KEY_CONFLICT_MODE, "stats") ?: "stats"
         val savedWatchdog = prefs.getBoolean(KEY_WATCHDOG_ENABLED, true)
+        val savedMinTier = prefs.getInt(KEY_MIN_CLOUD_TIER, 0)
 
         config.smokeLingerSec = savedSmokeLinger
         config.closeIntervalSec = savedCloseInterval
         config.conflictMode = savedConflictMode
         config.autoWatchdogEnabled = savedWatchdog
+        config.minCloudTier = savedMinTier
 
         binding.sliderSmokeLinger.value = savedSmokeLinger.toFloat().coerceIn(2f, 15f)
         binding.tvSmokeLingerLabel.text = "Smoke Hover Duration: ${savedSmokeLinger}s"
@@ -80,6 +85,17 @@ class MainActivity : AppCompatActivity() {
             "pause" -> binding.radioPause.isChecked = true
             else -> binding.radioStats.isChecked = true
         }
+
+        // Minimum Gear Quality spinner — tiers match the game's Auto-Use quality dropdown
+        val tierLabels = listOf(
+            "Normal and above (detect all)",
+            "Epic and above (skip Normal/Rare)",
+            "Legendary and above (gold only)"
+        )
+        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, tierLabels)
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        binding.spinnerMinQuality.adapter = adapter
+        binding.spinnerMinQuality.setSelection(savedMinTier.coerceIn(0, 2))
     }
 
     private fun setupListeners() {
@@ -144,6 +160,15 @@ class MainActivity : AppCompatActivity() {
             ScreenCaptureService.instance?.config?.conflictMode = mode
         }
 
+        binding.spinnerMinQuality.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
+                config.minCloudTier = position
+                prefs.edit().putInt(KEY_MIN_CLOUD_TIER, position).apply()
+                ScreenCaptureService.instance?.config?.minCloudTier = position
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+
         binding.btnStartHelper.setOnClickListener {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
                 Toast.makeText(this, "Please grant Floating Overlay permission first (Step 1).", Toast.LENGTH_SHORT).show()
@@ -204,6 +229,7 @@ class MainActivity : AppCompatActivity() {
                 it.closeIntervalSec = config.closeIntervalSec
                 it.autoWatchdogEnabled = config.autoWatchdogEnabled
                 it.conflictMode = config.conflictMode
+                it.minCloudTier = config.minCloudTier
             }
 
             startService(Intent(this, FloatingOverlayService::class.java))

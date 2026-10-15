@@ -39,8 +39,11 @@ object DecisionLogic {
 
     /**
      * Samples a specific rectangle in a bitmap and returns the color fractions.
+     * minCloudTier: 0 = detect all colors (cyan+purple+gold)
+     *               1 = epic+ only (purple+gold, skip cyan/normal)
+     *               2 = legendary+ only (gold only)
      */
-    fun analyzeRegion(bitmap: Bitmap, rect: Rect): ColorFractions {
+    fun analyzeRegion(bitmap: Bitmap, rect: Rect, minCloudTier: Int = 0): ColorFractions {
         val left = max(0, rect.left)
         val top = max(0, rect.top)
         val right = min(bitmap.width, rect.right)
@@ -71,13 +74,16 @@ object DecisionLogic {
             if ((hh <= 14f || hh >= 346f) && s >= 0.55f && v >= 0.55f) redCount++
             if (hh in 70f..160f && s >= 0.5f && v >= 0.45f) greenCount++
 
-            // Cloud detection: checks Cyan (rare/normal), Purple (epic), and Gold sparkles (legendary)
+            // Cloud detection with minimum quality tier filter:
+            //   tier 0 → all colors (cyan/normal, purple/epic, gold/legendary)
+            //   tier 1 → epic+ (purple + gold only; skips cyan/normal-quality clouds)
+            //   tier 2 → legendary+ (gold only)
             // On idle screen: ~3.5% (below 10% threshold -> timer completely stopped when idle!)
             // On purple cloud: ~48.9% - 53.7% (confirms gear!)
             // On cyan cloud: ~42.8% - 44.3% (confirms gear!)
-            val isCyan = (v >= 0.82f && s in 0.08f..0.55f && hh in 165f..225f)
-            val isPurple = (v >= 0.70f && s in 0.15f..0.70f && hh in 245f..320f)
-            val isGold = (v >= 0.90f && s in 0.18f..0.65f && hh in 38f..65f)
+            val isCyan   = minCloudTier <= 0 && (v >= 0.82f && s in 0.08f..0.55f && hh in 165f..225f)
+            val isPurple = minCloudTier <= 1 && (v >= 0.70f && s in 0.15f..0.70f && hh in 245f..320f)
+            val isGold   =                       (v >= 0.90f && s in 0.18f..0.65f && hh in 38f..65f)
             val isCloud = isCyan || isPurple || isGold
 
             if (isCloud) smokeCount++
@@ -94,8 +100,9 @@ object DecisionLogic {
     /**
      * Calculates the centroid (center of mass) of the cloud/smoke in normalized coordinates (0..1).
      * Returns null if not enough cloud pixels are present (< 8% of the region).
+     * minCloudTier: same tier filter as analyzeRegion (0=all, 1=epic+, 2=legendary+).
      */
-    fun getCloudCentroid(bitmap: Bitmap, smokeRegion: android.graphics.RectF = android.graphics.RectF(0.246f, 0.530f, 0.776f, 0.670f)): android.graphics.PointF? {
+    fun getCloudCentroid(bitmap: Bitmap, smokeRegion: android.graphics.RectF = android.graphics.RectF(0.246f, 0.530f, 0.776f, 0.670f), minCloudTier: Int = 0): android.graphics.PointF? {
         val w = bitmap.width
         val h = bitmap.height
         val x0 = (smokeRegion.left * w).toInt().coerceIn(0, w)
@@ -125,9 +132,9 @@ object DecisionLogic {
                 val s = hsv[1]
                 val v = hsv[2]
 
-                val isCyan = (v >= 0.82f && s in 0.08f..0.55f && hh in 165f..225f)
-                val isPurple = (v >= 0.70f && s in 0.15f..0.70f && hh in 245f..320f)
-                val isGold = (v >= 0.90f && s in 0.18f..0.65f && hh in 38f..65f)
+                val isCyan   = minCloudTier <= 0 && (v >= 0.82f && s in 0.08f..0.55f && hh in 165f..225f)
+                val isPurple = minCloudTier <= 1 && (v >= 0.70f && s in 0.15f..0.70f && hh in 245f..320f)
+                val isGold   =                      (v >= 0.90f && s in 0.18f..0.65f && hh in 38f..65f)
                 if (isCyan || isPurple || isGold) {
                     totalX += (x0 + x)
                     totalY += (y0 + y)
