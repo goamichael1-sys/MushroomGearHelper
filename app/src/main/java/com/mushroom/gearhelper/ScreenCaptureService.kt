@@ -267,11 +267,19 @@ class ScreenCaptureService : Service() {
                                 retries = 0
 
                                 val smokeFrac = metricsMap["smoke"]?.smoke ?: 0f
+                                val anySmokeFrac = metricsMap["smoke"]?.anySmoke ?: 0f
                                 val smokePct = "%.1f".format(smokeFrac * 100)
                                 val cloudPresent = smokeFrac >= 0.10f
+                                val kettleActive = anySmokeFrac >= 0.10f
+
+                                // If kettle is actively producing ANY gear (regardless of tier), it is NOT idle!
+                                if (kettleActive) {
+                                    lastProgressTime = now
+                                }
+
                                 val idleMs = now - lastProgressTime
 
-                                // 3a. Watchdog: if no real tap happened for N seconds, restart Auto
+                                // 3a. Watchdog: if kettle has been completely INACTIVE (no gear produced) for N seconds, restart Auto
                                 val watchdogMs = config.autoWatchdogSec * 1000L
                                 if (config.autoWatchdogEnabled && idleMs >= watchdogMs) {
                                     // Reset timer first so we don't spam taps every loop
@@ -386,12 +394,14 @@ class ScreenCaptureService : Service() {
                                         if (++smokeMiss >= 3) {
                                             smokeSince = 0L
                                         }
-                                        // Always show watchdog countdown when watchdog is ON
-                                        if (config.autoWatchdogEnabled) {
+                                        // When kettle is actively producing lower-tier gears (auto-sold by game):
+                                        if (kettleActive) {
+                                            FloatingOverlayService.instance?.updateStatus("Kettle Active (Auto-Selling...)")
+                                        } else if (config.autoWatchdogEnabled) {
                                             val idleSec = idleMs / 1000
-                                            FloatingOverlayService.instance?.updateStatus("Idle ${idleSec}s / ${config.autoWatchdogSec}s  [${smokePct}%]")
+                                            FloatingOverlayService.instance?.updateStatus("Idle ${idleSec}s / ${config.autoWatchdogSec}s")
                                         } else {
-                                            FloatingOverlayService.instance?.updateStatus("Watching for gear... [${smokePct}%]")
+                                            FloatingOverlayService.instance?.updateStatus("Watching for gear...")
                                         }
                                     }
                                 }

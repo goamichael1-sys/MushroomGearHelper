@@ -102,6 +102,7 @@ object DecisionLogic {
         var redCount = 0
         var greenCount = 0
         var smokeCount = 0
+        var anySmokeCount = 0
 
         for (pixel in pixels) {
             val r = (pixel shr 16) and 0xFF
@@ -119,13 +120,16 @@ object DecisionLogic {
 
             // Cloud detection with quality filter
             if (isCloudPixel(hh, s, v, minQualityIndex)) smokeCount++
+            // General cloud detection (any tier) to monitor if the kettle is active
+            if (isCloudPixel(hh, s, v, 0)) anySmokeCount++
         }
 
         val total = (width * height).toFloat()
         return ColorFractions(
             red = redCount / total,
             green = greenCount / total,
-            smoke = smokeCount / total
+            smoke = smokeCount / total,
+            anySmoke = anySmokeCount / total
         )
     }
 

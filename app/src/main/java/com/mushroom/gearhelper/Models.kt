@@ -53,7 +53,8 @@ data class HelperConfig(
 data class ColorFractions(
     val red: Float = 0f,
     val green: Float = 0f,
-    val smoke: Float = 0f
+    val smoke: Float = 0f,
+    val anySmoke: Float = 0f
 )
 
 data class PopupReading(
